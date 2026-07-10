@@ -1,0 +1,16 @@
+# .gitattributes - erzwingt konsistente Zeilenenden auf Git-Ebene.
+# Warum: Die .editorconfig legt LF fest, und die CI läuft auf Linux. Ohne diese
+# Datei würde Git auf Windows-Rechnern je nach lokaler Konfiguration CRLF
+# einchecken - und "dotnet format --verify-no-changes" schlüge in der CI fehl,
+# obwohl lokal alles "richtig aussieht". Diese Datei gewinnt gegen jede lokale
+# core.autocrlf-Einstellung und schließt die Fehlerklasse strukturell aus.
+
+# Alle Textdateien: als Text behandeln und mit LF speichern.
+* text=auto eol=lf
+
+# Binärdateien niemals konvertieren.
+*.png binary
+*.jpg binary
+*.ico binary
+*.snk binary
+*.pfx binary

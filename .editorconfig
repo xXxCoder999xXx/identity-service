@@ -1,0 +1,104 @@
+# .editorconfig - versionierte Format- und Stilregeln für das gesamte Repository.
+# Stil ist damit keine Meinung mehr, sondern maschinell prüfbare Konfiguration:
+# - "dotnet format --verify-no-changes" prüft in der CI gegen diese Datei.
+# - Regeln mit Schweregrad :warning werden über EnforceCodeStyleInBuild
+#   (Directory.Build.props) zu Build-Diagnosen und über TreatWarningsAsErrors
+#   zu harten Build-Fehlern.
+
+# Oberste .editorconfig im Repository - die Suche nach weiteren Dateien endet hier.
+root = true
+
+# ────────────────────────────────────────────────────────────────────
+# Grundregeln für ALLE Dateien
+# ────────────────────────────────────────────────────────────────────
+[*]
+charset = utf-8
+# LF als einheitliches Zeilenende auf allen Plattformen (siehe .gitattributes) -
+# verhindert, dass der Format-Check in der Linux-CI an Windows-CRLF scheitert.
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+# XML-basierte Projektdateien und Konfigurationsformate: 2 Leerzeichen (Konvention).
+[*.{csproj,props,targets}]
+indent_size = 2
+
+[*.{json,yml,yaml}]
+indent_size = 2
+
+# In Markdown sind zwei Leerzeichen am Zeilenende ein harter Umbruch - nicht entfernen.
+[*.md]
+trim_trailing_whitespace = false
+
+# ────────────────────────────────────────────────────────────────────
+# C#-Regeln
+# ────────────────────────────────────────────────────────────────────
+[*.cs]
+
+# --- Namespaces & usings ---
+# File-scoped Namespaces (C# 10+): eine Einrückungsebene weniger, moderne Form.
+csharp_style_namespace_declarations = file_scoped:warning
+csharp_using_directive_placement = outside_namespace:warning
+dotnet_sort_system_directives_first = true
+
+# --- Sichtbarkeit & Unveränderlichkeit ---
+# Sichtbarkeit immer explizit ausschreiben - Lesbarkeit vor Tippersparnis.
+dotnet_style_require_accessibility_modifiers = always:warning
+# Felder, die nur im Konstruktor gesetzt werden, müssen readonly sein -
+# erster Baustein für unveränderliche, invariantensichere Typen.
+dotnet_style_readonly_field = true:warning
+
+# --- Kein überflüssiges this. / eingebaute Typnamen ---
+dotnet_style_qualification_for_field = false:warning
+dotnet_style_qualification_for_property = false:warning
+dotnet_style_qualification_for_method = false:warning
+dotnet_style_qualification_for_event = false:warning
+# "int" statt "Int32" - Sprach-Aliase sind die idiomatische Form.
+dotnet_style_predefined_type_for_locals_parameters_members = true:warning
+dotnet_style_predefined_type_for_member_access = true:warning
+
+# --- Moderne Sprachmittel bevorzugen ---
+# Pattern Matching statt Cast-Kaskaden ("is x && (T)x" bzw. "as + null-Check").
+csharp_style_pattern_matching_over_is_with_cast_check = true:warning
+csharp_style_pattern_matching_over_as_with_null_check = true:warning
+csharp_style_prefer_switch_expression = true:warning
+csharp_style_inlined_variable_declaration = true:warning
+dotnet_style_object_initializer = true:suggestion
+dotnet_style_collection_initializer = true:suggestion
+
+# --- var: nur wo der Typ offensichtlich ist ---
+csharp_style_var_when_type_is_apparent = true:suggestion
+csharp_style_var_for_built_in_types = false:suggestion
+csharp_style_var_elsewhere = false:suggestion
+
+# --- Geschweifte Klammern immer setzen (verhindert die klassische
+#     "dangling else"-Fehlerquelle bei später ergänzten Zeilen) ---
+csharp_prefer_braces = true:warning
+
+# ────────────────────────────────────────────────────────────────────
+# Namenskonventionen
+# ────────────────────────────────────────────────────────────────────
+
+# Interfaces beginnen mit "I" (z. B. IUserRepository).
+dotnet_naming_rule.interfaces_begin_with_i.severity = warning
+dotnet_naming_rule.interfaces_begin_with_i.symbols = interfaces
+dotnet_naming_rule.interfaces_begin_with_i.style = prefix_i_pascal
+
+dotnet_naming_symbols.interfaces.applicable_kinds = interface
+
+dotnet_naming_style.prefix_i_pascal.required_prefix = I
+dotnet_naming_style.prefix_i_pascal.capitalization = pascal_case
+
+# Private Felder: _camelCase (z. B. _clock) - unterscheidet Felder auf einen
+# Blick von Parametern und lokalen Variablen.
+dotnet_naming_rule.private_fields_underscore.severity = warning
+dotnet_naming_rule.private_fields_underscore.symbols = private_fields
+dotnet_naming_rule.private_fields_underscore.style = underscore_camel
+
+dotnet_naming_symbols.private_fields.applicable_kinds = field
+dotnet_naming_symbols.private_fields.applicable_accessibilities = private
+
+dotnet_naming_style.underscore_camel.required_prefix = _
+dotnet_naming_style.underscore_camel.capitalization = camel_case

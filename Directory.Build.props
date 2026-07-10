@@ -1,0 +1,56 @@
+<Project>
+  <!--
+    Directory.Build.props wird von MSBuild automatisch in JEDES Projekt unterhalb
+    dieses Verzeichnisses importiert. Qualitäts- und Sicherheitsregeln stehen damit
+    genau einmal hier; jedes künftige Projekt (Domain, Application, Infrastructure,
+    Tests) erbt sie als reine Erweiterung, ohne dass bestehende Dateien geändert
+    werden müssen. Das ist das Open/Closed-Prinzip auf Build-Ebene.
+  -->
+  <PropertyGroup>
+
+    <!-- Einheitliches Zielframework für alle Projekte. .NET 10 aktiviert C# 14
+         automatisch als Standard-Sprachversion; eine explizite LangVersion ist
+         deshalb bewusst NICHT gesetzt (weniger Konfiguration = weniger Drift). -->
+    <TargetFramework>net10.0</TargetFramework>
+
+    <!-- Häufige using-Direktiven (System, System.Linq, ...) werden implizit
+         bereitgestellt. Reduziert Rauschen am Dateianfang. -->
+    <ImplicitUsings>enable</ImplicitUsings>
+
+    <!-- Nullable Reference Types: Null-Sicherheit wird zur Compilezeit per
+         Flussanalyse geprüft, statt zur Laufzeit als NullReferenceException zu
+         explodieren. Grundlage dafür, dass unsere Domäne später keine ungültigen
+         Zustände darstellen kann. -->
+    <Nullable>enable</Nullable>
+
+    <!-- Kernregel des Projekts: Jede Warnung ist ein Build-Fehler. Es gibt keine
+         Warnungen, die ignoriert werden können - weder lokal noch in der CI. -->
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+
+    <!-- Erzwingt die Stilregeln aus der .editorconfig (IDExxxx) auch im Build,
+         nicht nur als Editor-Hinweis. In Kombination mit TreatWarningsAsErrors
+         bricht ein Stilverstoß den Build. -->
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+
+    <!-- Aktiviert die vollständigen Roslyn-Codeanalyse-Regeln (CAxxxx) der
+         jeweils aktuellen SDK-Version. Ohne diese Einstellung läuft nur eine
+         schmale Default-Auswahl. -->
+    <AnalysisLevel>latest-all</AnalysisLevel>
+
+    <!-- Dependency-Scanning mit SDK-Bordmitteln: NuGet prüft beim Restore alle
+         Pakete gegen die bekannte Schwachstellen-Datenbank (NU1901-NU1904).
+         Explizit gesetzt, damit die Sicherheitsregel sichtbar und auditierbar
+         im Repository steht statt implizit vom SDK-Default abzuhängen. -->
+    <NuGetAudit>true</NuGetAudit>
+
+    <!-- "all" prüft direkte UND transitive Abhängigkeiten - Angriffe kommen
+         häufig über die zweite Reihe der Lieferkette. -->
+    <NuGetAuditMode>all</NuGetAuditMode>
+
+    <!-- "low" meldet jede bekannte Schwachstelle unabhängig vom Schweregrad.
+         Zusammen mit TreatWarningsAsErrors: Ein Paket mit bekannter CVE bricht
+         den Build - ohne ein einziges zusätzliches Tool. -->
+    <NuGetAuditLevel>low</NuGetAuditLevel>
+
+  </PropertyGroup>
+</Project>

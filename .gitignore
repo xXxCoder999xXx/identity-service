@@ -1,0 +1,39 @@
+# .gitignore - hält generierte Artefakte und lokale Umgebung aus dem Repository.
+# Grundsatz: Versioniert wird nur, was Quelle ist. Alles Reproduzierbare
+# (Build-Ausgaben) und alles Persönliche (IDE-Zustand) bleibt draußen.
+
+# Build-Ausgaben - vollständig reproduzierbar, gehören nie ins Repository.
+[Bb]in/
+[Oo]bj/
+artifacts/
+publish/
+
+# Testergebnisse und Coverage-Berichte (werden von der CI erzeugt).
+TestResults/
+coverage*/
+*.coverage
+*.trx
+
+# IDE- und Benutzerzustand (Visual Studio, Rider, VS Code).
+.vs/
+.idea/
+*.user
+*.suo
+*.DotSettings.user
+
+# VS Code: nur persönliche Einstellungen ignorieren; geteilte Konfiguration
+# (z. B. empfohlene Extensions) könnte später bewusst versioniert werden.
+.vscode/*
+!.vscode/extensions.json
+
+# Lokale Umgebungs- und Geheimnisdateien. Sicherheitsregel des Projekts:
+# Secrets liegen NIE im Repository - lokal in dotnet user-secrets bzw.
+# .env-Dateien, in der CI ausschließlich im Secret-Store der Plattform.
+.env
+.env.*
+*.Local.json
+appsettings.*.Local.json
+
+# Betriebssystem-Müll.
+.DS_Store
+Thumbs.db
