@@ -1,0 +1,24 @@
+<Project>
+  <!--
+    Central Package Management (ADR-003): Alle Paketversionen der gesamten
+    Solution stehen genau einmal hier. In den .csproj-Dateien stehen
+    PackageReference-Einträge OHNE Version-Attribut. Dieselbe OCP-Mechanik
+    wie Directory.Build.props: neue Projekte erben die Governance automatisch.
+  -->
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      WICHTIG (Regel 6.3.2, Slopsquatting-Prüfung): Verifiziere jedes Paket vor
+      dem ersten Restore auf nuget.org - exakte Schreibweise, Herausgeber
+      (Microsoft bzw. .NET Foundation / xUnit-Projekt), Downloadzahlen,
+      Pflegezustand - und trage die aktuelle stabile Version ein. Die Versionen
+      unten sind der Stand zum Zeitpunkt der Sitzung.
+    -->
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.7.0" />
+    <PackageVersion Include="xunit.v3" Version="3.2.2" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
+  </ItemGroup>
+</Project>

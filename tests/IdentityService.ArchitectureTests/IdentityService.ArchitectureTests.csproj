@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Alle Qualitätsregeln erbt dieses Projekt aus Directory.Build.props.
+       Hier stehen ausschließlich testprojekt-spezifische Eigenschaften. -->
+  <PropertyGroup>
+    <!-- xUnit-v3-Testprojekte sind eigenständige ausführbare Programme. -->
+    <OutputType>Exe</OutputType>
+    <!-- Testprojekte werden niemals als NuGet-Paket veröffentlicht. -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <!-- Bewusst OHNE Version-Attribute: Die Versionen verwaltet zentral
+       Directory.Packages.props (ADR-003). -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+  <!-- Das Testprojekt referenziert alle Schichten, denn es muss sie prüfen -
+       es ist der einzige erlaubte "Alleskenner" neben der Api. -->
+  <ItemGroup>
+    <ProjectReference Include="../../src/IdentityService.Domain/IdentityService.Domain.csproj" />
+    <ProjectReference Include="../../src/IdentityService.Application/IdentityService.Application.csproj" />
+    <ProjectReference Include="../../src/IdentityService.Infrastructure/IdentityService.Infrastructure.csproj" />
+    <ProjectReference Include="../../src/IdentityService.Api/IdentityService.Api.csproj" />
+  </ItemGroup>
+
+</Project>
