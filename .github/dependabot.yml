@@ -1,0 +1,35 @@
+# =============================================================================
+# Dependabot – Zielpfad im Repo: .github/dependabot.yml
+#
+# Untrennbares Gegenstück zum Pinning: Fixierung (SHA-Pins, Lockfile) liefert
+# Determinismus; der Bot liefert kontrollierte Bewegung – als PR, der dieselbe
+# Pipeline durchläuft wie jeder Code und einen menschlichen Merge braucht.
+#
+# ADR-005-Kandidat: Dependabot statt Renovate. Begründung: plattformnativ,
+# keine Dritt-App mit Repo-Zugriff (kleinere Lieferketten-Fläche, 6.2a),
+# ausreichend für unsere zwei Ökosysteme. Renovate ist mächtiger (Gruppierung,
+# Regex-Manager) – Neubewertungs-Auslöser: spürbarer PR-Lärm.
+# =============================================================================
+version: 2
+updates:
+  # Hebt SHA-Pins der Actions auf den Commit des neuen Releases und pflegt
+  # den Versions-Kommentar (# vX.Y.Z) hinter dem Pin mit.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    commit-message:
+      prefix: "chore"
+      include: "scope"  # ergibt "chore(deps): ..." – Conventional Commits (7.6)
+
+  # Versteht Central Package Management (Directory.Packages.props) und
+  # aktualisiert die packages.lock.json-Dateien konsistent mit.
+  - package-ecosystem: "nuget"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
