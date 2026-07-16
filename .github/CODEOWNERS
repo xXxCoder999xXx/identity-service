@@ -1,0 +1,32 @@
+# =============================================================================
+# CODEOWNERS – Zielpfad im Repo: .github/CODEOWNERS
+#
+# Zweck (6.2d): macht die sicherheitskritischen Pfade des Repositories
+# EXPLIZIT und bereitet die Review-Maschinerie vor. Enforcement ("Require
+# review from Code Owners") ist erst mit Required Approvals >= 1 wirksam –
+# Auslöser: zweite Person im Projekt (GitHub verbietet Self-Approval).
+# Bis dahin: verbindliche Dokumentation + vorbereitete Maschinerie.
+#
+# WICHTIG: @DEIN-GITHUB-HANDLE vor dem Commit durch den echten Account ersetzen.
+# Es gilt der jeweils LETZTE passende Eintrag pro Datei.
+# =============================================================================
+
+# Fallback: alles gehört der Projekt-Ownerin.
+*                           @DEIN-GITHUB-HANDLE
+
+# --- Sicherheitskritische Pfade (explizit, obwohl vom Fallback abgedeckt: ---
+# --- Sichtbarkeit IST der Zweck dieser Einträge) -----------------------------
+
+# Pipeline-Definitionen, Dependabot, dieses Dokument selbst
+/.github/                   @DEIN-GITHUB-HANDLE
+
+# Build-Governance: Compiler-Strenge, Toolchain, Abhängigkeits-Regeln
+/Directory.Build.props      @DEIN-GITHUB-HANDLE
+/Directory.Packages.props   @DEIN-GITHUB-HANDLE
+/nuget.config               @DEIN-GITHUB-HANDLE
+/global.json                @DEIN-GITHUB-HANDLE
+
+# Merge-Governance (Ruleset-Definition)
+/docs/governance/           @DEIN-GITHUB-HANDLE
+
+# Ab Schritt 4 hier ergänzen: Dockerfiles, docker-compose.*, /nginx/
