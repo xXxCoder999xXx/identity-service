@@ -1,0 +1,61 @@
+# =============================================================================
+# CodeQL (SAST) – Zielpfad im Repo: .github/workflows/codeql.yml
+#
+# AKTIVIERUNGS-GATE (ADR-004): Diese Datei erst committen, wenn das Repository
+# public ist ODER GitHub Code Security lizenziert wurde. Auf privaten Repos
+# ohne Lizenz schlägt der Ergebnis-Upload fehl – und die CodeQL-Nutzung wäre
+# lizenzwidrig. Bis dahin: als docs/pending/codeql.yml aufbewahren.
+#
+# Advanced Setup bewusst gewählt: versioniert, reviewbar, CODEOWNERS-schützbar,
+# Rechte explizit im Code. Trade-off: Pflege bei uns – getragen von Dependabot.
+# Action-Pin am 2026-07-13 verifiziert (git ls-remote) – Ritual 6.3.2 gilt.
+# =============================================================================
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "0 4 * * 1"  # wöchentlich (Mo 04:00 UTC): NEUE Queries prüfen
+                         # UNVERÄNDERTEN Code – ohne diesen Lauf erführe man von
+                         # neu erkennbaren Lücken erst beim nächsten Commit.
+  workflow_dispatch:
+
+permissions:
+  contents: read  # Workflow-Baseline; der Job unten ERSETZT sie bewusst
+
+jobs:
+  analyze:
+    name: Analyse (C#)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read          # muss erneut stehen: ein Job-Block ersetzt die
+                              # Baseline, er erweitert sie nicht (fail-closed)
+      security-events: write  # einziger Zweck: SARIF-Upload ins Code Scanning –
+                              # der Grund, warum CodeQL ein EIGENER Job ist
+                              # (Least Privilege formt die Pipeline-Topologie)
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: CodeQL initialisieren
+        uses: github/codeql-action/init@99df26d4f13ea111d4ec1a7dddef6063f76b97e9 # v4.37.0
+        with:
+          languages: csharp
+          build-mode: none
+          # build-mode: none = buildlose C#-Analyse (schneller, kein SDK-Setup
+          # im Job; minimal geringere Präzision als ein Manual-Build – für das
+          # Skeleton der richtige Start).
+          # Standard-Query-Suite bewusst beibehalten: breitere Suiten
+          # (security-extended) bringen mehr Findings UND mehr Fehlalarme –
+          # Alert-Müdigkeit ist ein Sicherheitsrisiko eigener Klasse.
+          # Erweiterung, sobald die Grundmenge beherrscht ist.
+
+      - name: Analysieren & Ergebnisse hochladen
+        uses: github/codeql-action/analyze@99df26d4f13ea111d4ec1a7dddef6063f76b97e9 # v4.37.0

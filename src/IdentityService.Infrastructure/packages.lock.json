@@ -1,0 +1,16 @@
+{
+  "version": 2,
+  "dependencies": {
+    "net10.0": {
+      "identityservice.application": {
+        "type": "Project",
+        "dependencies": {
+          "IdentityService.Domain": "[1.0.0, )"
+        }
+      },
+      "identityservice.domain": {
+        "type": "Project"
+      }
+    }
+  }
+}

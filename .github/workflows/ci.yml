@@ -1,0 +1,79 @@
+# =============================================================================
+# CI-Pipeline (Schritt 3a) – Zielpfad im Repo: .github/workflows/ci.yml
+# Konzept und Begründungen: Sitzung 2; Kommentare hier sind die Kurzfassung
+# für Leser ohne Sitzungskontext.
+# Action-Pins am 2026-07-13 gegen die offiziellen Repos aufgelöst
+# (git ls-remote, gepeelte Tags) – vor dem Push gemäß Regel 6.3.2 selbst
+# verifizieren: Repo öffnen → Releases/Tags → Commit des Tags vergleichen.
+# =============================================================================
+name: CI
+
+on:
+  push:
+    branches: [main]      # bis Branch Protection (3b) wird auch direkter Push geprüft
+  pull_request:
+    branches: [main]      # prüft den prospektiven Merge-Stand – Prüfgegenstand für 3b
+  workflow_dispatch:      # manueller Testlauf; verleiht keinerlei zusätzliche Rechte
+
+# Baseline für ALLE Jobs. Allowlist-Semantik: alles Nichtgenannte fällt auf "none".
+# Fail-closed für die Evolution der Pipeline – künftige Jobs erben read-only.
+permissions:
+  contents: read
+
+# Pro Ref genau ein lebender Lauf; jeder neue Push bricht das veraltete Urteil ab.
+# (Deploy-Workflows in Phase 4 drehen das um: cancel-in-progress: false.)
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: true                # kein Banner-Rauschen in den Logs
+  DOTNET_CLI_TELEMETRY_OPTOUT: true  # bewusste Konfiguration statt Default (A02)
+
+jobs:
+  build-test:
+    name: Build & Test    # = Name des Status-Checks für Branch Protection (3b) – stabil halten
+    runs-on: ubuntu-24.04 # bewusst versioniert statt "-latest" (beweglicher Zeiger)
+    timeout-minutes: 15   # deckelt Kontingentverbrauch UND Wirkzeit eines etwaigen Implantats
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          # Job-Token nicht in .git/config ablegen: kein späterer Step (oder
+          # kompromittiertes Werkzeug) soll es vom Dateisystem lesen können.
+          # Wir pushen nie aus der Pipeline – das Token hat auf der Platte
+          # nichts verloren (tj-actions-Lektion).
+          persist-credentials: false
+
+      - name: .NET SDK (Version aus global.json)
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
+        with:
+          global-json-file: global.json  # eine Quelle der Wahrheit für lokal UND CI
+        # Bewusst KEIN Paket-Cache: der Actions-Cache ist Angriffsfläche
+        # (TanStack, Mai 2026). Neubewertung erst, wenn Restore-Zeit real schmerzt.
+
+      - name: Restore (locked mode, inkl. NuGetAudit)
+        run: dotnet restore --locked-mode
+        # Eigener, benannter Schritt (Attribution): Lockfile-Bruch (NU1004) und
+        # CVE-Funde (NU1901–NU1904 × TreatWarningsAsErrors) sind Lieferketten-
+        # Signale und sollen als solche fehlschlagen. Ab hier verbietet
+        # --no-restore/--no-build allen Folgestufen die stille Neuauflösung.
+
+      - name: Build (Release, Warnungen = Fehler)
+        run: dotnet build --configuration Release --no-restore
+        # Die Strenge (TreatWarningsAsErrors, Analyzer, Nullable) lebt in
+        # Directory.Build.props – die Pipeline führt Repo-Regeln aus, statt
+        # eigene zu definieren: lokales Urteil == CI-Urteil.
+
+      - name: Format-Verifikation
+        run: dotnet format --verify-no-changes --no-restore
+        # Rein lesend; jeder Änderungsbedarf => Exit-Code != 0 => harter Fehlschlag.
+        # Position nach dem Build (Urteils-Hierarchie): erst "kompiliert es?",
+        # dann "ist es unser Stil?".
+
+      - name: Tests (Unit + Architektur)
+        run: dotnet test --configuration Release --no-build
+        # --no-build: getestet wird EXAKT das eben gebaute Artefakt – "dasselbe
+        # Artefakt überall" im Kleinen. Läuft mit: der Architekturtest, der die
+        # Abhängigkeitsregel ab jetzt bei jedem Lauf maschinell erzwingt.

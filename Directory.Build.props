@@ -52,5 +52,12 @@
          den Build - ohne ein einziges zusätzliches Tool. -->
     <NuGetAuditLevel>low</NuGetAuditLevel>
 
+
+    <!-- Lockfiles: NuGet schreibt den exakt aufgelösten Abhängigkeitsbaum
+         inklusive Hashes in packages.lock.json fest (ADR-003). Die CI wird
+         später im Locked Mode restaurieren. -->
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+
+
   </PropertyGroup>
 </Project>
