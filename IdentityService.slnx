@@ -3,12 +3,12 @@
     <File Path="global.json" />
   </Folder>
   <Folder Name="/src/">
-    <Project Path="../../../../../../../../Projects/xXxCoder999xXx/identity-service/src/IdentityService.Api/IdentityService.Api.csproj" />
-    <Project Path="../../../../../../../../Projects/xXxCoder999xXx/identity-service/src/IdentityService.Application/IdentityService.Application.csproj" />
-    <Project Path="../../../../../../../../Projects/xXxCoder999xXx/identity-service/src/IdentityService.Domain/IdentityService.Domain.csproj" />
-    <Project Path="../../../../../../../../Projects/xXxCoder999xXx/identity-service/src/IdentityService.Infrastructure/IdentityService.Infrastructure.csproj" />
+    <Project Path="src/IdentityService.Api/IdentityService.Api.csproj" />
+    <Project Path="src/IdentityService.Application/IdentityService.Application.csproj" />
+    <Project Path="src/IdentityService.Domain/IdentityService.Domain.csproj" />
+    <Project Path="src/IdentityService.Infrastructure/IdentityService.Infrastructure.csproj" />
   </Folder>
   <Folder Name="/tests/">
-    <Project Path="../../../../../../../../Projects/xXxCoder999xXx/identity-service/tests/IdentityService.ArchitectureTests/IdentityService.ArchitectureTests.csproj" />
+    <Project Path="tests/IdentityService.ArchitectureTests/IdentityService.ArchitectureTests.csproj" />
   </Folder>
 </Solution>
