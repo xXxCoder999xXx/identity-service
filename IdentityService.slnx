@@ -1,6 +1,28 @@
 <Solution>
-  <Folder Name="/Projektmappenelemente/">
+  <Folder Name="/Solution Items/">
     <File Path="global.json" />
+    <File Path="README.md" />
+    <File Path=".editorconfig" />
+    <File Path=".gitattributes" />
+    <File Path=".gitignore" />
+    <File Path="Directory.Build.props" />
+    <File Path="Directory.Packages.props" />
+    <File Path="nuget.config" />
+  </Folder>
+  <Folder Name="/.github/">
+    <File Path=".github/CODEOWNERS" />
+    <File Path=".github/dependabot.yml" />
+  </Folder>
+  <Folder Name="/docs/">
+    <Folder Name="/docs/adr/">
+      <File Path="docs/adr/ADR-000-vorlage.md" />
+      <File Path="docs/adr/ADR-001-plattformwahl-github.md" />
+      <File Path="docs/adr/ADR-002-xunit-v3.md" />
+      <File Path="docs/adr/ADR-003-abhaengigkeits-governance.md" />
+    </Folder>
+    <Folder Name="/docs/governance/">
+      <File Path="docs/governance/main-ruleset.json" />
+    </Folder>
   </Folder>
   <Folder Name="/src/">
     <Project Path="src/IdentityService.Api/IdentityService.Api.csproj" />
