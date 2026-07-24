@@ -18,6 +18,10 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+      groups:
+      codeql-action:
+        patterns:
+          - "github/codeql-action*"
       day: "monday"
     commit-message:
       prefix: "chore"
