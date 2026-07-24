@@ -18,18 +18,19 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
-      groups:
-      codeql-action:
-        patterns:
-          - "github/codeql-action*"
       day: "monday"
-    commit-message:
-      prefix: "chore"
-      include: "scope"  # ergibt "chore(deps): ..." – Conventional Commits (7.6)
+    # init und analyze sind zwei Einstiegspunkte EINES Produkts mit gemeinsamer
+    # Konfigurationsdatei – Versionsmischung ist ein Laufzeitfehler. Die Gruppe
+    # macht das Update atomar: ein PR, ein Diff, ein konsistenter Zielzustand.
+    # Bewusst eng gefasst (kein Sammeleimer): ungekoppelte Actions wie
+    # setup-dotnet bleiben Einzel-PRs mit eigenem Review.
     groups:
       codeql-action:
         patterns:
           - "github/codeql-action*"
+    commit-message:
+      prefix: "chore"
+      include: "scope"  # ergibt "chore(deps): ..." – Conventional Commits (7.6)
 
   # Versteht Central Package Management (Directory.Packages.props) und
   # aktualisiert die packages.lock.json-Dateien konsistent mit.
