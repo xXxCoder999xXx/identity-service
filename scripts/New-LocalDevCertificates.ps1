@@ -150,7 +150,18 @@ function Assert-OpenSslVersion {
     #>
     param([Parameter(Mandatory)][string] $OpenSslPath)
 
-    $versionText = (& $OpenSslPath version) 2>&1 | Out-String
+    # Siehe Kommentar in Invoke-OpenSsl: native Programme schreiben auch
+    # Erfolgsmeldungen nach stderr. Mit ErrorActionPreference = 'Stop' wuerde
+    # PowerShell das als Abbruchfehler werten. Massgeblich ist der Exit-Code.
+    $previousPreference = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $versionText = (& $OpenSslPath version) 2>&1 | Out-String
+    }
+    finally {
+        $ErrorActionPreference = $previousPreference
+    }
+
     if ($LASTEXITCODE -ne 0) {
         throw "openssl konnte nicht ausgefuehrt werden: $versionText"
     }
@@ -185,7 +196,23 @@ function Invoke-OpenSsl {
         [Parameter(Mandatory)][string]   $Activity
     )
 
-    $output = & $script:OpenSslPath @Arguments 2>&1
+    # WICHTIG: openssl schreibt auch ERFOLGSmeldungen nach stderr, etwa
+    # "Certificate request self-signature ok". Durch die Umleitung 2>&1 werden
+    # daraus PowerShell-Fehlerobjekte, und bei ErrorActionPreference = 'Stop'
+    # wuerde das Skript mitten im Erfolgsfall abbrechen.
+    #
+    # Der Kanal (stdout/stderr) sagt bei nativen Programmen nichts ueber den
+    # Schweregrad aus. Die einzige verlaessliche Erfolgsaussage ist der
+    # Exit-Code - deshalb wird nur er ausgewertet.
+    $previousPreference = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $output = & $script:OpenSslPath @Arguments 2>&1
+    }
+    finally {
+        $ErrorActionPreference = $previousPreference
+    }
+
     if ($LASTEXITCODE -ne 0) {
         throw "openssl fehlgeschlagen bei '$Activity' (Exit-Code $LASTEXITCODE):`n$($output -join [Environment]::NewLine)"
     }
@@ -202,7 +229,16 @@ function Protect-PrivateKeyFile {
     param([Parameter(Mandatory)][string] $Path)
 
     $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
-    $result = & icacls "$Path" /inheritance:r /grant:r "$($identity):(F)" 2>&1
+
+    $previousPreference = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $result = & icacls "$Path" /inheritance:r /grant:r "$($identity):(F)" 2>&1
+    }
+    finally {
+        $ErrorActionPreference = $previousPreference
+    }
+
     if ($LASTEXITCODE -ne 0) {
         throw "Dateirechte konnten nicht gesetzt werden fuer '$Path':`n$($result -join [Environment]::NewLine)"
     }
@@ -449,7 +485,15 @@ foreach ($certificate in $issuedCertificates) {
     $details | ForEach-Object { Write-Host "  $_" }
 
     # Prueft, ob das Zertifikat tatsaechlich gegen die erzeugte CA verifizierbar ist.
-    $verification = & $script:OpenSslPath verify -CAfile $caCrtPath $certificate.CertificatePath 2>&1
+    $previousPreference = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $verification = & $script:OpenSslPath verify -CAfile $caCrtPath $certificate.CertificatePath 2>&1
+    }
+    finally {
+        $ErrorActionPreference = $previousPreference
+    }
+
     if ($LASTEXITCODE -eq 0) {
         Write-Host '  Kettenpruefung: bestanden' -ForegroundColor Green
     }
