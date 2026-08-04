@@ -18,16 +18,15 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
-      groups:
-      codeql-action:
-        patterns:
-          - "github/codeql-action*"
       day: "monday"
     # init und analyze sind zwei Einstiegspunkte EINES Produkts mit gemeinsamer
-    # Konfigurationsdatei – Versionsmischung ist ein Laufzeitfehler. Die Gruppe
-    # macht das Update atomar: ein PR, ein Diff, ein konsistenter Zielzustand.
-    # Bewusst eng gefasst (kein Sammeleimer): ungekoppelte Actions wie
-    # setup-dotnet bleiben Einzel-PRs mit eigenem Review.
+    # Laufzeit-Konfigurationsdatei – Versionsmischung ist ein Laufzeitfehler,
+    # kein Stilproblem. Die Gruppe macht das Update atomar: ein PR, ein Diff,
+    # ein konsistenter Zielzustand statt zwei strukturell unmergebarer Hälften.
+    #
+    # Bewusst eng gefasst (kein Sammeleimer): Nur nachweislich gekoppelte
+    # Actions werden gruppiert. Ungekoppelte Actions wie setup-dotnet bleiben
+    # Einzel-PRs mit eigenem Review (insbesondere bei Major-Sprüngen).
     groups:
       codeql-action:
         patterns:
@@ -38,6 +37,13 @@ updates:
 
   # Versteht Central Package Management (Directory.Packages.props) und
   # aktualisiert die packages.lock.json-Dateien konsistent mit.
+  #
+  # Bewusst OHNE groups: Zwischen unseren NuGet-Paketen besteht keine
+  # nachgewiesene Laufzeitkopplung wie bei init/analyze. Eine pauschale
+  # "alles in einem PR"-Gruppe würde Diffs verwässern und Reviews erschweren,
+  # ohne einen echten Kopplungsgrund zu dokumentieren. Sollte sich das ändern
+  # (z. B. spürbarer PR-Lärm oder eine erkannte Paketgruppe), wird das als
+  # bewusste, begründete Entscheidung nachgezogen – nicht als Default.
   - package-ecosystem: "nuget"
     directory: "/"
     schedule:
