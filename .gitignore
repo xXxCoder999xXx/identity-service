@@ -37,5 +37,5 @@ appsettings.*.Local.json
 # Betriebssystem-Müll.
 .DS_Store
 Thumbs.db
-# Lokale Entwicklungs-Zertifikate und private Schluessel - niemals committen
+# Lokale Entwicklungs-Zertifikate und private Schlüssel - niemals committen
 certs/
