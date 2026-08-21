@@ -1,0 +1,29 @@
+# Erlaubnisliste (Fail-closed): alles zunaechst ausschliessen,
+# nur explizit Benoetigtes wieder erlauben. Siehe Gate 4b Teil 1, Frage 3.
+*
+
+# Zentrale Build-Governance (Root-Ebene)
+!Directory.Build.props
+!Directory.Packages.props
+!nuget.config
+!global.json
+!.editorconfig
+
+# Ausgelieferte Projekte - bewusst OHNE IdentityService.ArchitectureTests
+# "/**" statt "/" + "/**": die Kombination beider Formen ist die Ursache
+# des Build-Fehlers, "/**" allein ist die zuverlaessige Form fuer
+# Rueckeinschluss unter einer vorangestellten "*"-Sperre.
+!src/IdentityService.Api/**
+!src/IdentityService.Application/**
+!src/IdentityService.Domain/**
+!src/IdentityService.Infrastructure/**
+
+# Build-Artefakte in den erlaubten Projekten wieder ausschliessen
+src/IdentityService.Api/bin/
+src/IdentityService.Api/obj/
+src/IdentityService.Application/bin/
+src/IdentityService.Application/obj/
+src/IdentityService.Domain/bin/
+src/IdentityService.Domain/obj/
+src/IdentityService.Infrastructure/bin/
+src/IdentityService.Infrastructure/obj/
