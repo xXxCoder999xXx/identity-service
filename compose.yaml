@@ -61,7 +61,10 @@ services:
     cap_drop:
       - ALL
     environment:
-      ASPNETCORE_ENVIRONMENT: Development
+      # Von aussen ueberschreibbar, Vorgabe Development (lokaler Stack). Die CI
+      # setzt Production, damit Development und Production nicht unbemerkt
+      # auseinanderlaufen. Dasselbe Image, Konfiguration nur von aussen.
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
       ASPNETCORE_HTTPS_PORTS: "8443"
       Kestrel__Certificates__Default__Path: /certs/api.crt
       Kestrel__Certificates__Default__KeyPath: /certs/api.key
