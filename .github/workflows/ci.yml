@@ -82,8 +82,8 @@ jobs:
   # Schritt 4b Teil 4: Dockerfile und nginx.conf sind Code und werden wie Code
   # geprüft. Bewusst im selben Workflow und OHNE Pfadfilter: ein Job, der bei
   # Config-only-PRs nicht läuft, ist ein Gate mit Loch.
-  # Bewusst nur Runner-Bordmittel (docker, docker compose, openssl): keine
-  # zusätzliche Action, also keine neue Abhängigkeit (6.2a).
+  # Bewusst nur Runner-Bordmittel (docker, docker compose, openssl, curl,
+  # pwsh): keine zusätzliche Action, also keine neue Abhängigkeit (6.2a).
   # Erbt die Baseline "contents: read" – der Job pusht nichts.
   # ---------------------------------------------------------------------------
   container:
@@ -118,10 +118,10 @@ jobs:
         # statt einer UID oder ein fehlender USER würde dort erst beim Deploy
         # auffallen. Fail closed: leer, 0 oder nicht numerisch => rot.
 
-      - name: Wegwerf-Zertifikate erzeugen (nur für nginx -t)
+      - name: Wegwerf-Zertifikate erzeugen (nginx -t und Smoke-Test)
         run: |
           set -euo pipefail
-          mkdir -p certs/ca certs/edge
+          mkdir -p certs/ca certs/edge certs/api
           openssl ecparam -name prime256v1 -genkey -noout -out certs/ca/local-dev-ca.key
           openssl req -x509 -new -sha256 -days 1 \
             -key certs/ca/local-dev-ca.key \
@@ -140,14 +140,32 @@ jobs:
             -CAcreateserial \
             -extfile certs/edge/edge.ext \
             -out certs/edge/edge.crt
-          rm certs/ca/local-dev-ca.key certs/edge/edge.csr certs/edge/edge.ext
-          chmod 0644 certs/edge/edge.key
-        # nginx -t öffnet die in nginx.conf genannten Zertifikatsdateien; im
+          openssl ecparam -name prime256v1 -genkey -noout -out certs/api/api.key
+          openssl req -new \
+            -key certs/api/api.key \
+            -subj "/CN=api" \
+            -out certs/api/api.csr
+          printf 'subjectAltName=DNS:api,DNS:localhost\n' > certs/api/api.ext
+          openssl x509 -req -sha256 -days 1 \
+            -in certs/api/api.csr \
+            -CA certs/ca/local-dev-ca.crt \
+            -CAkey certs/ca/local-dev-ca.key \
+            -CAcreateserial \
+            -extfile certs/api/api.ext \
+            -out certs/api/api.crt
+          rm certs/ca/local-dev-ca.key \
+            certs/edge/edge.csr certs/edge/edge.ext \
+            certs/api/api.csr certs/api/api.ext
+          chmod 0644 certs/edge/edge.key certs/api/api.key
+        # nginx und Kestrel öffnen die konfigurierten Zertifikatsdateien; im
         # Repository liegen bewusst keine (certs/ ist nie versioniert). Die
         # Dateien entstehen im Lauf, gelten einen Tag und verschwinden mit dem
         # Runner – keine Secrets. ECDSA P-256 wie New-LocalDevCertificates.ps1.
-        # Der CA-Schlüssel wird nach dem Signieren gelöscht. chmod 0644: nginx
-        # läuft als UID 101 und muss den Wegwerf-Schlüssel lesen können.
+        # Das API-Zertifikat trägt den SAN "api": Service-Name, SAN und
+        # proxy_ssl_name sind gekoppelt – weicht einer ab, wird der Smoke-Test
+        # rot. Der CA-Schlüssel wird nach dem letzten Signieren gelöscht.
+        # chmod 0644: nginx (UID 101) und die API (UID 1654) müssen ihren
+        # Wegwerf-Schlüssel lesen können.
 
       - name: nginx-Konfiguration validieren (nginx -t)
         run: docker compose run --rm --no-deps nginx nginx -t
@@ -156,3 +174,33 @@ jobs:
         # tmpfs – eine Quelle der Wahrheit. Hebt Dependabot den nginx-Pin an,
         # validiert dieser Schritt die Konfiguration gegen das neue Image.
         # --no-deps: der Dienst "api" wird hierfür nicht gestartet.
+
+      - name: Stack starten (Production-Modus)
+        env:
+          ASPNETCORE_ENVIRONMENT: Production
+        run: |
+          set -euo pipefail
+          docker compose up --detach --build
+          docker inspect "$(docker compose ps --quiet api)" \
+            --format '{{range .Config.Env}}{{println .}}{{end}}' \
+            | grep --line-regexp 'ASPNETCORE_ENVIRONMENT=Production'
+        # compose.yaml gibt Development nur als Vorgabe; die CI testet den
+        # Modus, der später ausgeliefert wird. Der grep ist der Beweis, dass
+        # die Überschreibung wirklich im Container ankommt – ohne Treffer wird
+        # der Schritt rot (fail closed), statt still Development zu testen.
+        # --build nutzt die Layer des Schritts "Image bauen" (derselbe Builder
+        # auf demselben Runner) – kein Actions-Cache, keine zweite Kompilierung.
+
+      - name: Smoke-Test (Health, Security-Header, Netzgrenze)
+        shell: pwsh
+        run: ./scripts/Test-Stack.ps1 -CaFile certs/ca/local-dev-ca.crt
+        # Dasselbe Skript wie lokal: lokales Urteil == CI-Urteil. Grün ist nicht
+        # gleich funktionierend – geprüft wird mit echten Anfragen durch die
+        # ganze Kette, die Zertifikatskette gegen die Wegwerf-CA des Laufs.
+        # Das Skript wartet selbst auf Bereitschaft (depends_on prüft keine).
+
+      - name: Container-Logs (nur bei Fehlschlag)
+        if: failure()
+        run: docker compose logs --no-color --tail 100
+        # Diagnose im Lauf statt Rätselraten. Das nginx-Log-Format enthält
+        # keine Query-Strings (7.4), die API loggt keine Geheimnisse.
