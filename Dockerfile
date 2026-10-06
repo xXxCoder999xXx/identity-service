@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # ---- Build-Stage ----
-FROM mcr.microsoft.com/dotnet/sdk:10.0-noble@sha256:e1ffd2a92ae84c1291bc1b6887501f8af98e6331e7af6d4c8d37168c5e87a64c AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0-noble@sha256:e70cdb7f80b0348f5cb85f19a8f670fca061f033d57eed12fa003d58b0e06317 AS build
 WORKDIR /src
 
 # Governance- und Projektdateien zuerst: Layer-Cache bleibt gueltig,
@@ -26,7 +26,7 @@ RUN dotnet publish src/IdentityService.Api/IdentityService.Api.csproj \
     -o /app/publish
 
 # ---- Runtime-Stage ----
-FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble-chiseled@sha256:0839314d08bb65da369135389a5d8291f75ace587fbb0488f469eb92c62eef68 AS final
+FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble-chiseled@sha256:48e51f2f6798897be7ac4e775c049ed8fe60d3190f637e1f9c9dc7513efa659c AS final
 WORKDIR /app
 COPY --from=build /app/publish .
 USER $APP_UID
