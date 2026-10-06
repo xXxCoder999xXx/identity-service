@@ -1,4 +1,27 @@
 {
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "powershell",
+            "command": "& \"$env:CLAUDE_PROJECT_DIR\\.claude\\hooks\\Protect-Secrets.ps1\"; exit $LASTEXITCODE",
+            "timeout": 15,
+            "statusMessage": "Prüfe Zugriff auf Geheimnisse"
+          },
+          {
+            "type": "command",
+            "shell": "powershell",
+            "command": "& \"$env:CLAUDE_PROJECT_DIR\\.claude\\hooks\\Test-CommitConvention.ps1\"; exit $LASTEXITCODE",
+            "timeout": 15,
+            "statusMessage": "Prüfe Commit-Konvention"
+          }
+        ]
+      }
+    ]
+  },
   "permissions": {
     "deny": [
       "Read(/certs/**)",
