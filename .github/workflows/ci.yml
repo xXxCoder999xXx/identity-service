@@ -77,3 +77,82 @@ jobs:
         # --no-build: getestet wird EXAKT das eben gebaute Artefakt – "dasselbe
         # Artefakt überall" im Kleinen. Läuft mit: der Architekturtest, der die
         # Abhängigkeitsregel ab jetzt bei jedem Lauf maschinell erzwingt.
+
+  # ---------------------------------------------------------------------------
+  # Schritt 4b Teil 4: Dockerfile und nginx.conf sind Code und werden wie Code
+  # geprüft. Bewusst im selben Workflow und OHNE Pfadfilter: ein Job, der bei
+  # Config-only-PRs nicht läuft, ist ein Gate mit Loch.
+  # Bewusst nur Runner-Bordmittel (docker, docker compose, openssl): keine
+  # zusätzliche Action, also keine neue Abhängigkeit (6.2a).
+  # Erbt die Baseline "contents: read" – der Job pusht nichts.
+  # ---------------------------------------------------------------------------
+  container:
+    name: Container & nginx  # künftiger Status-Check-Name – stabil halten; noch KEIN Required Check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false  # Begründung siehe Job "Build & Test"
+
+      - name: Image bauen (ohne Push, ohne Cache)
+        run: docker build --pull --tag identity-service-api:ci .
+        # Beweist bei jedem Lauf die Kopplung global.json <-> Build-Stage-Digest:
+        # passt das SDK im Image nicht zum Pin (rollForward: disable), scheitert
+        # der Restore im Container. Die Basis-Images sind per Digest gepinnt.
+
+      - name: Image-Metadaten prüfen (Non-Root, numerische UID)
+        run: |
+          set -euo pipefail
+          user="$(docker image inspect identity-service-api:ci --format '{{.Config.User}}')"
+          echo "Config.User=${user}"
+          case "${user}" in
+            ''|0|*[!0-9]*)
+              echo "::error::Image-Nutzer muss numerisch und ungleich 0 sein (E-4b-4), ist: '${user}'"
+              exit 1
+              ;;
+          esac
+        # Kubernetes prüft runAsNonRoot anhand der Image-Metadaten: ein Name
+        # statt einer UID oder ein fehlender USER würde dort erst beim Deploy
+        # auffallen. Fail closed: leer, 0 oder nicht numerisch => rot.
+
+      - name: Wegwerf-Zertifikate erzeugen (nur für nginx -t)
+        run: |
+          set -euo pipefail
+          mkdir -p certs/ca certs/edge
+          openssl ecparam -name prime256v1 -genkey -noout -out certs/ca/local-dev-ca.key
+          openssl req -x509 -new -sha256 -days 1 \
+            -key certs/ca/local-dev-ca.key \
+            -subj "/CN=ci-throwaway-ca" \
+            -out certs/ca/local-dev-ca.crt
+          openssl ecparam -name prime256v1 -genkey -noout -out certs/edge/edge.key
+          openssl req -new \
+            -key certs/edge/edge.key \
+            -subj "/CN=localhost" \
+            -out certs/edge/edge.csr
+          printf 'subjectAltName=DNS:localhost,IP:127.0.0.1\n' > certs/edge/edge.ext
+          openssl x509 -req -sha256 -days 1 \
+            -in certs/edge/edge.csr \
+            -CA certs/ca/local-dev-ca.crt \
+            -CAkey certs/ca/local-dev-ca.key \
+            -CAcreateserial \
+            -extfile certs/edge/edge.ext \
+            -out certs/edge/edge.crt
+          rm certs/ca/local-dev-ca.key certs/edge/edge.csr certs/edge/edge.ext
+          chmod 0644 certs/edge/edge.key
+        # nginx -t öffnet die in nginx.conf genannten Zertifikatsdateien; im
+        # Repository liegen bewusst keine (certs/ ist nie versioniert). Die
+        # Dateien entstehen im Lauf, gelten einen Tag und verschwinden mit dem
+        # Runner – keine Secrets. ECDSA P-256 wie New-LocalDevCertificates.ps1.
+        # Der CA-Schlüssel wird nach dem Signieren gelöscht. chmod 0644: nginx
+        # läuft als UID 101 und muss den Wegwerf-Schlüssel lesen können.
+
+      - name: nginx-Konfiguration validieren (nginx -t)
+        run: docker compose run --rm --no-deps nginx nginx -t
+        # Über compose statt "docker run": geprüft wird gegen EXAKT das in
+        # compose.yaml gepinnte Image, mit denselben Mounts, read_only und
+        # tmpfs – eine Quelle der Wahrheit. Hebt Dependabot den nginx-Pin an,
+        # validiert dieser Schritt die Konfiguration gegen das neue Image.
+        # --no-deps: der Dienst "api" wird hierfür nicht gestartet.
