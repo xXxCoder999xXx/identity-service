@@ -1,0 +1,89 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "powershell",
+            "command": "& \"$env:CLAUDE_PROJECT_DIR\\.claude\\hooks\\Protect-Secrets.ps1\"; exit $LASTEXITCODE",
+            "timeout": 15,
+            "statusMessage": "Prüfe Zugriff auf Geheimnisse"
+          },
+          {
+            "type": "command",
+            "shell": "powershell",
+            "command": "& \"$env:CLAUDE_PROJECT_DIR\\.claude\\hooks\\Test-CommitConvention.ps1\"; exit $LASTEXITCODE",
+            "timeout": 15,
+            "statusMessage": "Prüfe Commit-Konvention"
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "deny": [
+      "Read(/certs/**)",
+      "Read(**/.env)",
+      "Read(**/.env.*)",
+      "Bash(git push --force*)",
+      "Bash(git push -f *)",
+      "Bash(git push * --force*)",
+      "Bash(git push * -f)",
+      "Bash(git commit --no-verify*)",
+      "Bash(git commit * --no-verify*)",
+      "Bash(git commit --no-gpg-sign*)",
+      "Bash(git commit * --no-gpg-sign*)",
+      "Bash(dotnet add package *)",
+      "Bash(dotnet add * package *)",
+      "PowerShell(git push --force*)",
+      "PowerShell(git push -f *)",
+      "PowerShell(git push * --force*)",
+      "PowerShell(git push * -f)",
+      "PowerShell(git commit --no-verify*)",
+      "PowerShell(git commit * --no-verify*)",
+      "PowerShell(git commit --no-gpg-sign*)",
+      "PowerShell(git commit * --no-gpg-sign*)",
+      "PowerShell(dotnet add package *)",
+      "PowerShell(dotnet add * package *)"
+    ],
+    "ask": [
+      "Edit(/CLAUDE.md)",
+      "Edit(/.claude/**)",
+      "Edit(/.github/**)",
+      "Edit(/Dockerfile)",
+      "Edit(/.dockerignore)",
+      "Edit(/compose.yaml)",
+      "Edit(/nginx.conf)",
+      "Edit(/scripts/**)",
+      "Edit(/docs/governance/**)",
+      "Edit(/Directory.Build.props)",
+      "Edit(/Directory.Packages.props)",
+      "Edit(/global.json)",
+      "Edit(/nuget.config)",
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "PowerShell(git commit *)",
+      "PowerShell(git push *)"
+    ],
+    "allow": [
+      "Bash(dotnet restore --locked-mode)",
+      "Bash(dotnet build *)",
+      "Bash(dotnet format --verify-no-changes *)",
+      "Bash(dotnet test *)",
+      "Bash(git status *)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git show *)",
+      "PowerShell(dotnet restore --locked-mode)",
+      "PowerShell(dotnet build *)",
+      "PowerShell(dotnet format --verify-no-changes *)",
+      "PowerShell(dotnet test *)",
+      "PowerShell(git status *)",
+      "PowerShell(git diff *)",
+      "PowerShell(git log *)",
+      "PowerShell(git show *)"
+    ]
+  }
+}
