@@ -52,3 +52,53 @@ updates:
     commit-message:
       prefix: "chore"
       include: "scope"
+
+  # ---------------------------------------------------------------------------
+  # Schritt 4b Teil 4: kontrollierte Bewegung auch für Images und das SDK.
+  # Die drei folgenden Blöcke sind rein additiv (OCP) – die Einträge oben
+  # bleiben unangetastet. Der Job "Container & nginx" in ci.yml prüft jeden
+  # dieser Bot-PRs: bauen, nginx -t, Smoke-Test im Production-Modus.
+  # ---------------------------------------------------------------------------
+
+  # Basis-Images im Dockerfile (Build- und Runtime-Stage), per Digest gepinnt.
+  #
+  # Bewusst OHNE groups, obwohl beide .NET-Images aus demselben Release stammen:
+  # Ein Gruppenmuster muss auf die Namen passen, unter denen der Bot die Images
+  # führt – und ein nicht passendes Muster wird lautlos ignoriert (Lektion aus
+  # Sitzung 4). Die Gruppe wird nachgezogen, sobald echte Bot-PRs die Namen
+  # zeigen und das Muster daran geprüft ist.
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+
+  # Images in compose.yaml (nginx-unprivileged). Eigenes Ökosystem: "docker"
+  # liest keine Compose-Dateien.
+  - package-ecosystem: "docker-compose"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+
+  # SDK-Pin in global.json (rollForward: disable).
+  #
+  # Gekoppelt mit dem Build-Stage-Digest im Dockerfile, aber der Bot arbeitet
+  # je Ökosystem: Ein neues SDK erzeugt ZWEI PRs (hier und unter "docker"), und
+  # jeder für sich wird im Job "Container & nginx" rot, weil das SDK im Image
+  # nicht zum Pin passt. Das ist gewollt – der Bot meldet, die Pipeline urteilt,
+  # die beiden Änderungen werden von Hand in EINEM PR zusammengeführt.
+  - package-ecosystem: "dotnet-sdk"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
