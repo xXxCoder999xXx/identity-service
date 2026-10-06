@@ -33,4 +33,15 @@
 # hier kompromittiert jede TLS-Verifikation auf dieser Maschine.
 /scripts/                   @xXxCoder999xXx
 
-# Ab Schritt 4b hier ergänzen: Dockerfile, compose.yaml, /nginx/
+# Container-Einheit (Schritt 4b): Image-Bau, Build-Kontext, Stack-Definition
+# und Edge-Konfiguration. Härtung und Zero-Trust-Grenze leben in diesen Dateien.
+/Dockerfile                 @xXxCoder999xXx
+/.dockerignore              @xXxCoder999xXx
+/compose.yaml               @xXxCoder999xXx
+/nginx.conf                 @xXxCoder999xXx
+
+# Agenten-Harness: legt fest, was der KI-Agent im Repository darf (Regeln,
+# Berechtigungen, Hooks, Skills). Eine unbemerkte Änderung hier hebelt die
+# Grenzen aus CLAUDE.md Abschnitt 6 aus (6.3.4).
+/CLAUDE.md                  @xXxCoder999xXx
+/.claude/                   @xXxCoder999xXx
