@@ -86,6 +86,18 @@ updates:
     commit-message:
       prefix: "chore"
       include: "scope"
+    # nginx bleibt auf dem Stable-Zweig. Bei nginx sind ungerade Nebenversionen
+    # der Entwicklungszweig (mainline), gerade der stabile; der Bot kennt das
+    # nicht und schlägt die höchste Nummer vor (PR #48: 1.30.5 -> 1.31.5, alle
+    # Checks grün, gemergt und wieder zurückgenommen). Grün heißt nicht
+    # regelkonform. Patch-Updates innerhalb des Zweigs kommen weiter. Der
+    # Wechsel auf den nächsten Stable-Zweig ist damit eine bewusste Entscheidung
+    # von Hand: Pin anheben UND diese Regel prüfen.
+    ignore:
+      - dependency-name: "nginxinc/nginx-unprivileged"
+        update-types:
+          - "version-update:semver-minor"
+          - "version-update:semver-major"
 
   # SDK-Pin in global.json (rollForward: disable).
   #
