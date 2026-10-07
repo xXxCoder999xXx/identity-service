@@ -1,0 +1,68 @@
+# =============================================================================
+# PR-Titel-Check (Schritt 4b Teil 4) – Zielpfad: .github/workflows/pr-title.yml
+#
+# Warum: Beim Squash-Merge wird der PR-Titel zum Commit-Betreff auf main. Drei
+# Fehl-Titel (#21, #25, #31) sind so in die Historie gelangt.
+#
+# Warum eine eigene Datei statt eines Jobs in ci.yml: Der Check muss auch
+# laufen, wenn nur der Titel bearbeitet wird (types: edited). In ci.yml würde
+# jede Titelkorrektur Build, Tests und den Container-Job neu starten.
+# Kein Pfadfilter: Der Workflow läuft bei JEDEM Pull Request nach main.
+#
+# Sicherheit – der Titel ist Text, den jeder Einreicher frei wählt (auch aus
+# einem Fork):
+#   - Er wird NIE per ${{ ... }} in ein run: eingesetzt (Script Injection),
+#     sondern über env: übergeben und in der Shell nur als Daten gelesen.
+#   - Kein Checkout: Der Job führt keinen Code aus dem Pull Request aus.
+#   - permissions: {} – der Job braucht kein einziges Recht.
+#   - pull_request, nicht pull_request_target.
+#   - Keine Action, also keine Abhängigkeit (6.2a).
+#
+# Das Muster steht wortgleich in .claude/hooks/Test-CommitConvention.ps1 und in
+# Gruppe 5 von Test-RepoState.ps1. Wer es ändert, ändert alle Stellen. Eine
+# gemeinsame Skriptdatei wurde bewusst verworfen: Der Job müsste dafür Code aus
+# dem Pull Request auschecken und ausführen.
+# =============================================================================
+name: PR-Titel
+
+on:
+  pull_request:
+    branches: [main]
+    # edited: Titel (oder Beschreibung) wurde geändert – ohne diesen Typ bliebe
+    # ein korrigierter Titel rot, bis jemand einen neuen Commit pusht.
+    types: [opened, edited, reopened, synchronize]
+
+# Fail-closed-Baseline: keinerlei Rechte für das Job-Token.
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pr-title:
+    name: PR-Titel          # = Name des Status-Checks – stabil halten
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+
+    steps:
+      - name: Titel gegen Conventional Commits prüfen
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          set -euo pipefail
+          pattern='^(feat|fix|docs|chore|refactor|test|build|ci|perf|style|revert)(\([^)]+\))?!?: .'
+          printf 'Titel: %s\n' "$PR_TITLE"
+          if [[ ! "$PR_TITLE" =~ $pattern ]]; then
+            echo "::error::Der PR-Titel ist kein Conventional Commit. Erwartet: <type>(<scope>): <subject> mit type aus feat|fix|docs|chore|refactor|test|build|ci|perf|style|revert."
+            exit 1
+          fi
+          if [[ "$PR_TITLE" == *. ]]; then
+            echo "::error::Der PR-Titel endet mit einem Punkt. Der Betreff steht ohne Punkt."
+            exit 1
+          fi
+          echo "Der Titel entspricht Conventional Commits."
+        # Der Titel wird nur mit vorangestelltem Text ausgegeben: Eine Zeile,
+        # die mit "::" beginnt, würde der Runner als Workflow-Befehl lesen.
+        # In den Fehlermeldungen steht der Titel deshalb gar nicht.
+        # Der Vergleich beachtet Groß-/Kleinschreibung ("Chore: x" fällt durch).

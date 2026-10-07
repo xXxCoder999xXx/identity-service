@@ -7,9 +7,11 @@
       1. Kein Commit auf main - Integration nur ueber Feature-Branches.
       2. Der Commit-Betreff folgt Conventional Commits.
 
-    Das Betreff-Muster ist identisch mit Gruppe 5 in Test-RepoState.ps1
-    (eine Quelle der Wahrheit). Abweichung: Vergleich mit -cmatch, also
-    Gross-/Kleinschreibung beachtet ("Chore: x" faellt durch).
+    Das Betreff-Muster steht wortgleich an drei Stellen: hier, in
+    .github/workflows/pr-title.yml (prueft den PR-Titel in der CI) und in
+    Gruppe 5 von Test-RepoState.ps1. Wer es aendert, aendert alle Stellen.
+    Hier und im Workflow wird Gross-/Kleinschreibung beachtet ("Chore: x"
+    faellt durch).
 
     Eingabe:  JSON des Harness auf stdin (tool_input.command, cwd).
     Ausgabe:  Exit 0 = erlaubt, Exit 2 = blockiert (Grund auf stderr).
