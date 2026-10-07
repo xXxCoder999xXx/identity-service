@@ -26,7 +26,7 @@ RUN dotnet publish src/IdentityService.Api/IdentityService.Api.csproj \
     -o /app/publish
 
 # ---- Runtime-Stage ----
-FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble-chiseled@sha256:48e51f2f6798897be7ac4e775c049ed8fe60d3190f637e1f9c9dc7513efa659c AS final
+FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble-chiseled@sha256:0839314d08bb65da369135389a5d8291f75ace587fbb0488f469eb92c62eef68 AS final
 WORKDIR /app
 COPY --from=build /app/publish .
 USER $APP_UID
