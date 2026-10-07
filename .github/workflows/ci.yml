@@ -222,7 +222,7 @@ jobs:
   # Zugriff auf Docker. Kein Secret, keine Action, kein Cache.
   # ---------------------------------------------------------------------------
   image-scan:
-    name: Image-Scan         # künftiger Status-Check-Name – stabil halten; noch KEIN Required Check
+    name: Image-Scan         # = Name des Status-Checks im Ruleset (Required Check) – stabil halten
     runs-on: ubuntu-24.04
     timeout-minutes: 20
 

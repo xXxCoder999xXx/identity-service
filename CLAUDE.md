@@ -36,7 +36,7 @@ Neuaufbau eines Microservice (.NET 10 / C# 14) nach Clean/Hexagonal-Architektur 
 
 ## 3. Repository und Befehle
 
-Karte: `src/IdentityService.{Domain,Application,Infrastructure,Api}`, `tests/`, `scripts/` (PowerShell), `docs/adr/`, `docs/sitzungen/`, `docs/governance/` (Ruleset), `.github/` (Workflows, `dependabot.yml`, `CODEOWNERS`), `certs/` (lokal, nie versioniert). Wurzel: `IdentityService.slnx`, `Directory.Build.props`, `Directory.Packages.props`, `nuget.config`, `global.json`, `.editorconfig`, `Dockerfile`, `.dockerignore`, `compose.yaml`, `nginx.conf`.
+Karte: `src/IdentityService.{Domain,Application,Infrastructure,Api}`, `tests/`, `scripts/` (PowerShell), `docs/adr/`, `docs/sitzungen/`, `docs/governance/` (Ruleset), `.github/` (Workflows, `dependabot.yml`, `CODEOWNERS`), `certs/` (lokal, nie versioniert). Wurzel: `IdentityService.slnx`, `Directory.Build.props`, `Directory.Packages.props`, `nuget.config`, `global.json`, `.editorconfig`, `Dockerfile`, `.dockerignore`, `compose.yaml`, `compose.scan.yaml` (Image-Scanner, ADR-009), `nginx.conf`.
 
 Lokal == CI. Die Reihenfolge ist die Urteils-Hierarchie und bleibt:
 
@@ -52,7 +52,7 @@ Der Stack ist nur über nginx erreichbar: `https://localhost:8443/health`. Quali
 
 ## 4. Git, Pull Requests, Commits
 
-- `main` ist per Ruleset geschützt: PR-Pflicht, Squash-only, lineare Historie, signierte Commits, Required Checks `Build & Test`, `Analyse (C#)`, `Container & nginx` und `PR-Titel` im Strict-Mode, keine Bypass-Akteure. Auto-Merge ist für niemanden aktiv, auch nicht für Bot-PRs.
+- `main` ist per Ruleset geschützt: PR-Pflicht, Squash-only, lineare Historie, signierte Commits, Required Checks `Build & Test`, `Analyse (C#)`, `Container & nginx`, `PR-Titel` und `Image-Scan` im Strict-Mode, keine Bypass-Akteure. Auto-Merge ist für niemanden aktiv, auch nicht für Bot-PRs.
 - Kurzlebige Branches `<type>/<kebab-case>` mit Typ aus der Conventional-Commits-Liste. Tippfehler im Branch-Namen landen im PR-Titel (`chor/` wurde #31): Namen vor dem Push prüfen.
 - Conventional Commits: `type(scope): subject` mit `feat|fix|docs|chore|refactor|test|build|ci|perf|style|revert`; Betreff englisch, Imperativ, ohne Punkt. Squash übernimmt den **PR-Titel** als Commit-Betreff – er ist der künftige Commit und wird vor dem Merge geprüft.
 - **Ein Thema pro Branch.** Gekoppelte Änderungen gehören atomar in **einen** PR, weil die CI Zustände prüft, nicht Absichten: SDK-Pin in `global.json` + Build-Stage-Digest im Dockerfile; Service-Name + Zertifikats-SAN + nginx-`proxy_ssl_name`; CodeQL `init` + `analyze`.
