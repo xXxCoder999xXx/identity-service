@@ -1,4 +1,8 @@
-# syntax=docker/dockerfile:1
+# Bewusst KEINE "# syntax="-Zeile: Sie liesse Docker vor jedem Build ein
+# Hilfs-Image ueber einen beweglichen Tag ohne Digest nachladen. Dieses
+# Dockerfile nutzt nur Anweisungen, die der eingebaute Uebersetzer kennt.
+# Wird spaeter eine neuere Funktion gebraucht (z. B. Cache-Mounts): die Zeile
+# mit einem per Digest gepinnten Image wieder einfuehren.
 
 # ---- Build-Stage ----
 FROM mcr.microsoft.com/dotnet/sdk:10.0-noble@sha256:e70cdb7f80b0348f5cb85f19a8f670fca061f033d57eed12fa003d58b0e06317 AS build
