@@ -17,3 +17,5 @@ Das Projekt entsteht als vertikaler Durchstich: Automatisierungsfundament
   (`feat:`, `fix:`, `chore:`, ...).
 - Integration ausschließlich über kurzlebige Feature-Branches und Pull Requests
   (Branch Protection wird mit der CI-Pipeline aktiviert).
+
+Wegwerf-Zeile: beweist den PR-Titel-Check. Nicht mergen.
