@@ -14,6 +14,12 @@ on:
   pull_request:
     branches: [main]      # prüft den prospektiven Merge-Stand – Prüfgegenstand für 3b
   workflow_dispatch:      # manueller Testlauf; verleiht keinerlei zusätzliche Rechte
+  schedule:
+    - cron: "0 5 * * 1"   # wöchentlich (Mo 05:00 UTC), eine Stunde nach CodeQL.
+                          # Neues Wissen auf unverändertem Stand: NuGetAudit und
+                          # der Image-Scan finden Lücken, die erst nach dem
+                          # letzten Commit bekannt wurden. Ein Fehlschlag kommt
+                          # per E-Mail, nicht als Check an einem Pull Request.
 
 # Baseline für ALLE Jobs. Allowlist-Semantik: alles Nichtgenannte fällt auf "none".
 # Fail-closed für die Evolution der Pipeline – künftige Jobs erben read-only.
@@ -204,3 +210,76 @@ jobs:
         run: docker compose logs --no-color --tail 100
         # Diagnose im Lauf statt Rätselraten. Das nginx-Log-Format enthält
         # keine Query-Strings (7.4), die API loggt keine Geheimnisse.
+
+  # ---------------------------------------------------------------------------
+  # Schritt 4b Teil 4: Image-Schwachstellen-Scan mit Grype (ADR-009).
+  # Eigener Job statt weiterer Schritte in "Container & nginx": eigener
+  # Status-Check mit eigener Aussage, und der Download der Schwachstellen-
+  # Datenbank verzögert den Smoke-Test nicht. Preis: das Image wird hier ein
+  # zweites Mal gebaut.
+  # Der Scanner ist in compose.scan.yaml per Digest gepinnt (Dependabot pflegt
+  # ihn dort) und läuft gehärtet: er bekommt das Image nur als Datei, keinen
+  # Zugriff auf Docker. Kein Secret, keine Action, kein Cache.
+  # ---------------------------------------------------------------------------
+  image-scan:
+    name: Image-Scan         # künftiger Status-Check-Name – stabil halten; noch KEIN Required Check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false  # Begründung siehe Job "Build & Test"
+
+      - name: Image bauen und als Datei exportieren
+        run: |
+          set -euo pipefail
+          docker build --pull --tag identity-service-api:ci .
+          mkdir -p scan/in scan/db scan/out
+          docker save --output scan/in/app.tar identity-service-api:ci
+          chmod 0644 scan/in/app.tar
+          chmod 0777 scan/db scan/out
+        # scan/ ist nie versioniert und liegt außerhalb des Build-Kontexts.
+        # chmod: Der Scanner läuft als root OHNE Capabilities (cap_drop: ALL),
+        # darf also fremde Dateirechte nicht übergehen. Er muss die Image-Datei
+        # lesen und in die Ordner für Datenbank und Bericht schreiben können,
+        # die dem Runner-Nutzer gehören. Der Runner ist kurzlebig.
+
+      - name: Scan-Bericht (alle Funde, ohne Abbruch)
+        run: >
+          docker compose --file compose.scan.yaml run --rm grype
+          docker-archive:/in/app.tar
+          --output table
+          --output json=/out/grype.json
+          --output cyclonedx-json=/out/sbom.cdx.json
+        # Zeigt auch Funde ohne verfügbaren Fix – sie blockieren nicht, sollen
+        # aber sichtbar bleiben. Lädt die Datenbank; ohne Netz oder Datenbank
+        # bricht Grype mit Fehler ab (fail closed).
+
+      - name: Scanner sieht das Image (Betriebssystem und Pakete erkannt)
+        run: |
+          set -euo pipefail
+          distro="$(jq -r '.distro.name // ""' scan/out/grype.json)"
+          debs="$(jq '[.components[] | select((.purl // "") | startswith("pkg:deb/"))] | length' scan/out/sbom.cdx.json)"
+          runtime="$(jq '[.components[] | select(.name == "Microsoft.NETCore.App.Runtime.linux-x64")] | length' scan/out/sbom.cdx.json)"
+          echo "Betriebssystem=${distro} Systempakete=${debs} Runtime-Paket=${runtime}"
+          if [ "${distro}" != "ubuntu" ] || [ "${debs}" -lt 1 ] || [ "${runtime}" -lt 1 ]; then
+            echo "::error::Der Scanner erkennt das Image nicht vollständig. Ein Ergebnis ohne Funde wäre wertlos (ADR-009)."
+            exit 1
+          fi
+        # Schutz gegen ein Prüfwerkzeug, das nichts findet, weil es nicht suchen
+        # konnte: Das chiseled Image hat keinen Paketmanager. Erkennt Grype nach
+        # einem Update weder Ubuntu noch Pakete noch die .NET-Runtime, wird der
+        # Job rot statt still grün.
+
+      - name: Scan-Gate (High oder höher mit verfügbarem Fix)
+        run: >
+          docker compose --file compose.scan.yaml run --rm grype
+          docker-archive:/in/app.tar
+          --only-fixed
+          --fail-on high
+          --output table
+        # Schwellenwert nach ADR-009: Funde ohne Fix liegen im Basis-Image und
+        # sind nicht behebbar – sie stehen im Bericht oben, stoppen aber nicht.
+        # Nutzt die im Berichtsschritt geladene Datenbank desselben Laufs.

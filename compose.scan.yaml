@@ -1,0 +1,56 @@
+# ---------------------------------------------------------------------------
+# compose.scan.yaml - Image-Schwachstellen-Scanner (ADR-009)
+#
+# Eigene Datei statt eines Dienstes in compose.yaml: der Scanner ist ein
+# Werkzeug, kein Teil des Stacks. Er steht trotzdem in einer Compose-Datei,
+# damit Dependabot (Oekosystem docker-compose) Tag und Digest pflegt - in einem
+# run:-Schritt der Pipeline saehe Dependabot das Image nicht.
+#
+# Aufruf (lokal und in der CI identisch):
+#   docker build --tag identity-service-api:ci .
+#   docker save --output scan/in/app.tar identity-service-api:ci
+#   docker compose --file compose.scan.yaml run --rm grype docker-archive:/in/app.tar
+#
+# Der Ordner scan/ ist nie versioniert (.gitignore) und liegt ausserhalb des
+# Build-Kontexts (.dockerignore ist eine Erlaubnisliste).
+# ---------------------------------------------------------------------------
+
+# Eigener Projektname: der Scanner teilt weder Netz noch Namen mit dem Stack.
+name: identity-service-scan
+
+services:
+  grype:
+    # Per Digest gepinnt, der Tag dient der Lesbarkeit und Dependabot.
+    # Bewusst das Container-Image und keine GitHub Action: ein Action-SHA pinnt
+    # nur den Wrapper, nicht das Werkzeug dahinter (ADR-009).
+    image: ghcr.io/anchore/grype:v0.120.1@sha256:e4a44ef45d285b829ce6efe2642980329661bd2d18eab5fc539138d4adaebbbe
+    # Das Image legt keinen Nutzer fest, der Prozess laeuft als root im
+    # Container. Deshalb dieselbe Haertung wie im Stack - und vor allem KEIN
+    # Zugriff auf Docker: der Scanner bekommt das Image nur als Datei.
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    mem_limit: 2g
+    cpus: 2.0
+    environment:
+      # Die Schwachstellen-Datenbank wird zur Laufzeit von grype.anchore.io
+      # geladen. Kein Netz oder keine Datenbank => Abbruch mit Fehler
+      # (fail closed), nie "keine Funde".
+      GRYPE_DB_CACHE_DIR: /db
+      # Kein Blick nach neuen Programmversionen: die Version bestimmt der Pin.
+      GRYPE_CHECK_FOR_APP_UPDATE: "false"
+    volumes:
+      - type: bind
+        source: ./scan/in
+        target: /in
+        read_only: true
+      - type: bind
+        source: ./scan/db
+        target: /db
+      - type: bind
+        source: ./scan/out
+        target: /out

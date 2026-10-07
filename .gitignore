@@ -39,3 +39,7 @@ appsettings.*.Local.json
 Thumbs.db
 # Lokale Entwicklungs-Zertifikate und private Schlüssel - niemals committen
 certs/
+
+# Arbeitsordner des Image-Scanners (compose.scan.yaml): exportiertes Image,
+# Schwachstellen-Datenbank und Berichte - alles reproduzierbar.
+scan/
