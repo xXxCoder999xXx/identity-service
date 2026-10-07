@@ -38,6 +38,7 @@
 /Dockerfile                 @xXxCoder999xXx
 /.dockerignore              @xXxCoder999xXx
 /compose.yaml               @xXxCoder999xXx
+/compose.scan.yaml          @xXxCoder999xXx
 /nginx.conf                 @xXxCoder999xXx
 
 # Agenten-Harness: legt fest, was der KI-Agent im Repository darf (Regeln,
