@@ -34,7 +34,8 @@
         "required_status_checks": [
           { "context": "Build & Test", "integration_id": 15368 },
           { "context": "Analyse (C#)", "integration_id": 15368 },
-          { "context": "Container & nginx", "integration_id": 15368 }
+          { "context": "Container & nginx", "integration_id": 15368 },
+          { "context": "PR-Titel", "integration_id": 15368 }
         ]
       }
     }
