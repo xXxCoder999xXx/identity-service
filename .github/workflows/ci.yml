@@ -87,7 +87,7 @@ jobs:
   # Erbt die Baseline "contents: read" – der Job pusht nichts.
   # ---------------------------------------------------------------------------
   container:
-    name: Container & nginx  # künftiger Status-Check-Name – stabil halten; noch KEIN Required Check
+    name: Container & nginx  # = Name des Status-Checks im Ruleset (Required Check) – stabil halten
     runs-on: ubuntu-24.04
     timeout-minutes: 15
 
