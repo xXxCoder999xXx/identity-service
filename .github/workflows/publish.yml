@@ -170,48 +170,93 @@ jobs:
         run: |
           set -euo pipefail
           subject="oci://${IMAGE_NAME}@${DIGEST}"
-          policy=(
-            --repo "${GITHUB_REPOSITORY}"
-            --signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/publish.yml"
-            --source-ref refs/heads/main
-            --deny-self-hosted-runners
-          )
+          workflow="${GITHUB_REPOSITORY}/.github/workflows/publish.yml"
+          branch="refs/heads/main"
+          provenance="https://slsa.dev/provenance/v1"
+          sbom="https://cyclonedx.org/bom"
 
-          echo "::group::Herkunftsnachweis (von GitHub geladen)"
-          gh attestation verify "${subject}" "${policy[@]}"
-          echo "::endgroup::"
+          # Was im verifizierten Nachweis stehen muss (eine Zeile je Nachweis).
+          expected_repo="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}"
+          expected_signer="${GITHUB_SERVER_URL}/${workflow}@${branch}"
+          facts='.[] | .verificationResult
+            | [ .statement.predicateType,
+                .signature.certificate.sourceRepositoryURI,
+                .signature.certificate.sourceRepositoryRef,
+                .signature.certificate.buildSignerURI,
+                .signature.certificate.runnerEnvironment ]
+            | @tsv'
 
-          echo "::group::Herkunftsnachweis (aus der Registry geladen)"
-          gh attestation verify "${subject}" "${policy[@]}" --bundle-from-oci
-          echo "::endgroup::"
+          # Muss bestehen UND die erwarteten Angaben enthalten.
+          # $1 Titel, $2 Art des Nachweises, Rest: weitere Optionen
+          verify_ok() {
+            local title="$1" type="$2" out want
+            shift 2
+            echo "::group::${title}"
+            out="$(gh attestation verify "${subject}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --signer-workflow "${workflow}" \
+              --source-ref "${branch}" \
+              --deny-self-hosted-runners \
+              --predicate-type "${type}" \
+              "$@" \
+              --format json --jq "${facts}")"
+            printf 'Art | Repository | Branch | Workflow | Runner\n%s\n' "${out}"
+            want="$(printf '%s\t%s\t%s\t%s\t%s' \
+              "${type}" "${expected_repo}" "${branch}" "${expected_signer}" github-hosted)"
+            if [ -z "${out}" ] || printf '%s\n' "${out}" \
+              | grep --invert-match --line-regexp --fixed-strings --quiet -- "${want}"; then
+              echo "::endgroup::"
+              echo "::error::${title}: Die verifizierten Angaben fehlen oder weichen ab."
+              exit 1
+            fi
+            echo "::endgroup::"
+          }
 
-          echo "::group::Stückliste"
-          gh attestation verify "${subject}" "${policy[@]}" \
-            --predicate-type https://cyclonedx.org/bom
-          echo "::endgroup::"
+          # Muss scheitern. $1 Titel, Rest: vollständiger Aufruf nach "verify"
+          verify_must_fail() {
+            local title="$1"
+            shift
+            echo "::group::Gegenprobe: ${title}"
+            if gh attestation verify "$@"; then
+              echo "::endgroup::"
+              echo "::error::Gegenprobe '${title}' wurde akzeptiert. Das Prüf-Gate ist wertlos."
+              exit 1
+            fi
+            echo "Gegenprobe bestanden: abgelehnt."
+            echo "::endgroup::"
+          }
 
-          echo "::group::Gegenprobe: fremdes Image muss scheitern"
+          verify_ok "Herkunftsnachweis (von GitHub geladen)" "${provenance}"
+          verify_ok "Herkunftsnachweis (aus der Registry geladen)" "${provenance}" --bundle-from-oci
+          verify_ok "Stückliste" "${sbom}"
+
           foreign="$(docker compose config --images \
             | grep --max-count 1 '^nginxinc/.*@sha256:' \
             | sed --regexp-extended 's/:[^:@/]+@/@/')"
           if [ -z "${foreign}" ]; then
-            echo "::endgroup::"
             echo "::error::Kein fremdes Image für die Gegenprobe gefunden."
             exit 1
           fi
-          echo "Fremdes Image: ${foreign}"
-          if gh attestation verify "oci://${foreign}" "${policy[@]}"; then
-            echo "::endgroup::"
-            echo "::error::Die Verifikation hat ein fremdes Image akzeptiert. Das Prüf-Gate ist wertlos."
-            exit 1
-          fi
-          echo "Gegenprobe bestanden: fremdes Image abgelehnt."
-          echo "::endgroup::"
+          verify_must_fail "fremdes Image ${foreign}" "oci://${foreign}" \
+            --repo "${GITHUB_REPOSITORY}" --signer-workflow "${workflow}" \
+            --source-ref "${branch}" --deny-self-hosted-runners
+          verify_must_fail "eigenes Image, falscher Workflow (ci.yml)" "${subject}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/ci.yml" \
+            --source-ref "${branch}" --deny-self-hosted-runners
+          verify_must_fail "eigenes Image, falscher Branch" "${subject}" \
+            --repo "${GITHUB_REPOSITORY}" --signer-workflow "${workflow}" \
+            --source-ref refs/heads/not-main --deny-self-hosted-runners
         # Der Nachweis ist nur so viel wert wie seine Prüfung. Verlangt werden
         # dieses Repository, GENAU dieser Workflow, der Branch main und ein
-        # von GitHub betriebener Runner. Die Gegenprobe schützt vor einem
-        # Prüfwerkzeug, das alles durchwinkt: Das nginx-Image aus compose.yaml
-        # stammt nicht aus diesem Repository und muss abgelehnt werden.
-        # Grenze der Gegenprobe: Sie unterscheidet nicht, WARUM die
-        # Verifikation scheitert. Die drei bestandenen Prüfungen davor zeigen,
-        # dass das Werkzeug in diesem Lauf arbeiten kann.
+        # von GitHub betriebener Runner.
+        # gh schreibt ohne Terminal bei Erfolg nichts: Deshalb gibt jede
+        # Verifikation aus, was im Nachweis steht, und vergleicht es mit den
+        # erwarteten Werten. Fehlt die Ausgabe, wird der Lauf rot (fail closed).
+        # Die Gegenproben schützen vor einem Prüfwerkzeug, das alles
+        # durchwinkt. Das fremde Image (nginx aus compose.yaml) hat hier gar
+        # keinen Nachweis. Die beiden anderen prüfen das EIGENE Image und
+        # ändern je genau eine Bedingung: Derselbe Aufruf besteht unmittelbar
+        # davor, also löst genau diese Bedingung die Ablehnung aus.
+        # Die Feldnamen der Ausgabe sind am 2026-10-08 mit gh 2.102.0 an einem
+        # öffentlichen Nachweis (cli/cli) ausprobiert.
