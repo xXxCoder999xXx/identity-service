@@ -193,54 +193,16 @@ jobs:
         with:
           persist-credentials: false  # Begründung siehe Job "Build & Test"
 
-      - name: Image bauen und als Datei exportieren
-        run: |
-          set -euo pipefail
-          docker build --pull --tag identity-service-api:ci .
-          mkdir -p scan/in scan/db scan/out
-          docker save --output scan/in/app.tar identity-service-api:ci
-          chmod 0644 scan/in/app.tar
-          chmod 0777 scan/db scan/out
-        # scan/ ist nie versioniert und liegt außerhalb des Build-Kontexts.
-        # chmod: Der Scanner läuft als root OHNE Capabilities (cap_drop: ALL),
-        # darf also fremde Dateirechte nicht übergehen. Er muss die Image-Datei
-        # lesen und in die Ordner für Datenbank und Bericht schreiben können,
-        # die dem Runner-Nutzer gehören. Der Runner ist kurzlebig.
+      - name: Image bauen
+        run: docker build --pull --tag identity-service-api:ci .
 
-      - name: Scan-Bericht (alle Funde, ohne Abbruch)
-        run: >
-          docker compose --file compose.scan.yaml run --rm grype
-          docker-archive:/in/app.tar
-          --output table
-          --output json=/out/grype.json
-          --output cyclonedx-json=/out/sbom.cdx.json
-        # Zeigt auch Funde ohne verfügbaren Fix – sie blockieren nicht, sollen
-        # aber sichtbar bleiben. Lädt die Datenbank; ohne Netz oder Datenbank
-        # bricht Grype mit Fehler ab (fail closed).
-
-      - name: Scanner sieht das Image (Betriebssystem und Pakete erkannt)
-        run: |
-          set -euo pipefail
-          distro="$(jq -r '.distro.name // ""' scan/out/grype.json)"
-          debs="$(jq '[.components[] | select((.purl // "") | startswith("pkg:deb/"))] | length' scan/out/sbom.cdx.json)"
-          runtime="$(jq '[.components[] | select(.name == "Microsoft.NETCore.App.Runtime.linux-x64")] | length' scan/out/sbom.cdx.json)"
-          echo "Betriebssystem=${distro} Systempakete=${debs} Runtime-Paket=${runtime}"
-          if [ "${distro}" != "ubuntu" ] || [ "${debs}" -lt 1 ] || [ "${runtime}" -lt 1 ]; then
-            echo "::error::Der Scanner erkennt das Image nicht vollständig. Ein Ergebnis ohne Funde wäre wertlos (ADR-009)."
-            exit 1
-          fi
-        # Schutz gegen ein Prüfwerkzeug, das nichts findet, weil es nicht suchen
-        # konnte: Das chiseled Image hat keinen Paketmanager. Erkennt Grype nach
-        # einem Update weder Ubuntu noch Pakete noch die .NET-Runtime, wird der
-        # Job rot statt still grün.
-
-      - name: Scan-Gate (High oder höher mit verfügbarem Fix)
-        run: >
-          docker compose --file compose.scan.yaml run --rm grype
-          docker-archive:/in/app.tar
-          --only-fixed
-          --fail-on high
-          --output table
-        # Schwellenwert nach ADR-009: Funde ohne Fix liegen im Basis-Image und
-        # sind nicht behebbar – sie stehen im Bericht oben, stoppen aber nicht.
-        # Nutzt die im Berichtsschritt geladene Datenbank desselben Laufs.
+      - name: Image scannen (Bericht, Blindheits-Schutz, Gate)
+        run: bash scripts/invoke-image-scan.sh identity-service-api:ci
+        # Ein Skript statt Inline-Schritten, weil der Veröffentlichungs-
+        # Workflow (ADR-010) dasselbe Image nach denselben Regeln scannt: Der
+        # Schwellenwert des Gates steht nur im Skript. Es exportiert das Image
+        # als Datei, erzeugt Bericht und Stückliste, prüft, dass der Scanner
+        # das Image wirklich erkennt, und bricht bei einem Fund der Stufe High
+        # oder höher mit verfügbarem Fix ab. Jeder Abschnitt erscheint im
+        # Protokoll als eigene Gruppe; die Exit-Codes stehen im Skriptkopf.
+        # Aufruf über "bash": unabhängig vom Ausführungs-Bit der Datei.
