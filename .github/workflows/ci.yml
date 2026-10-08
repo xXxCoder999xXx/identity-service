@@ -213,8 +213,8 @@ jobs:
 
           failed=0
           check() {
-            bash scripts/invoke-image-scan.sh "$2"
-            actual=$?
+            actual=0
+            bash scripts/invoke-image-scan.sh "$2" || actual=$?
             echo "BEWEIS image=$2 erwartet=$1 erhalten=${actual}"
             [ "${actual}" -eq "$1" ] || failed=1
           }
