@@ -1,0 +1,217 @@
+# =============================================================================
+# Veröffentlichung (Schritt 5, ADR-010) – .github/workflows/publish.yml
+# Baut das Image, prüft es (Smoke-Test, Image-Scan), legt es in der GitHub
+# Container Registry ab und versieht es mit Herkunftsnachweis und Stückliste.
+# Ein Prüf-Gate verifiziert beides. Ein Deploy findet hier NICHT statt.
+#
+# Action-Pin am 2026-10-07 gegen das offizielle Repository aufgelöst
+# (git ls-remote, gepeelter Tag). actions/attest ist die Action hinter den
+# Hüllen attest-build-provenance und attest-sbom (ADR-010).
+#
+# Dieser Workflow läuft nicht bei Pull Requests: Er ist kein Status-Check im
+# Ruleset. Fehler zeigen sich erst nach dem Merge; ein fehlerhaftes Image
+# gelangt wegen der Schrittfolge trotzdem nicht in die Registry.
+# =============================================================================
+name: Publish
+
+on:
+  push:
+    branches: [main]      # NUR main. Nie pull_request, nie workflow_dispatch:
+                          # Der Job hat Schreibrechte und darf nicht von einem
+                          # beliebigen Branch aus startbar sein.
+
+# Baseline wie in ci.yml: alles Nichtgenannte fällt auf "none".
+permissions:
+  contents: read
+
+# Veröffentlichungen laufen nacheinander und werden nie abgebrochen: Ein Lauf,
+# der zwischen Hochladen und Nachweis stirbt, hinterließe ein Image ohne
+# Nachweis. (Umkehrung der Regel aus ci.yml.)
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Image veröffentlichen
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    # Ein Job-Block ERSETZT die Baseline: contents: read wird wiederholt.
+    # Genau vier Rechte (ADR-010):
+    #   packages: write      Image und Nachweise in die Registry schreiben
+    #   id-token: write      kurzlebigen Identitätsnachweis (OIDC) anfordern,
+    #                        mit dem der Lauf signiert – kein gespeicherter
+    #                        Schlüssel, kein Secret
+    #   attestations: write  Nachweise bei GitHub ablegen
+    # Bewusst NICHT artifact-metadata: write – es dient nur Storage Records,
+    # die es laut Doku der Action nur für Organisationen gibt.
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+
+    env:
+      # Name in der Registry: kleingeschrieben und OHNE Tag (der Nachweis
+      # bezeichnet das Image über seinen Digest).
+      IMAGE_NAME: ghcr.io/xxxcoder999xxx/identity-service
+      # Name, den compose dem gebauten Image gibt (<Projekt>-<Dienst>).
+      LOCAL_IMAGE: identity-service-api
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false  # Begründung siehe ci.yml, Job "Build & Test"
+
+      # --- 1. Bauen: genau EIN Image für alle folgenden Schritte -------------
+      - name: Image bauen (einmal, ohne Cache)
+        run: docker compose build --pull api
+        # Über compose, damit Stack, Scan und Veröffentlichung nachweislich
+        # dasselbe Image verwenden. Die Basis-Images sind per Digest gepinnt.
+
+      # --- 2. Prüfen: bis hierher schreibt der Lauf nichts nach außen --------
+      - name: Wegwerf-Zertifikate erzeugen
+        run: bash scripts/new-throwaway-certificates.sh
+
+      - name: Stack starten (Production-Modus, ohne Neubau)
+        env:
+          ASPNETCORE_ENVIRONMENT: Production
+        run: |
+          set -euo pipefail
+          docker compose up --detach --no-build
+          container="$(docker compose ps --quiet api)"
+          docker inspect "${container}" \
+            --format '{{range .Config.Env}}{{println .}}{{end}}' \
+            | grep --line-regexp 'ASPNETCORE_ENVIRONMENT=Production'
+          built="$(docker image inspect "${LOCAL_IMAGE}" --format '{{.Id}}')"
+          running="$(docker inspect "${container}" --format '{{.Image}}')"
+          echo "gebaut=${built} laufend=${running}"
+          if [ "${built}" != "${running}" ]; then
+            echo "::error::Der Stack läuft nicht mit dem eben gebauten Image."
+            exit 1
+          fi
+        # --no-build: fehlt das Image, scheitert der Schritt, statt still ein
+        # zweites zu bauen. Der Vergleich der Image-IDs ist der Beweis, dass
+        # getestet wird, was veröffentlicht wird (fail closed).
+
+      - name: Smoke-Test (Health, Security-Header, Netzgrenze)
+        shell: pwsh
+        run: ./scripts/Test-Stack.ps1 -CaFile certs/ca/local-dev-ca.crt
+
+      - name: Container-Logs (nur bei Fehlschlag)
+        if: failure()
+        run: docker compose logs --no-color --tail 100
+
+      - name: Image scannen (Bericht, Blindheits-Schutz, Gate)
+        run: bash scripts/invoke-image-scan.sh "${LOCAL_IMAGE}"
+        # Dasselbe Skript und derselbe Schwellenwert wie im Check "Image-Scan".
+        # Nebenprodukt: die Stückliste scan/out/sbom.cdx.json (CycloneDX).
+
+      # --- 3. Veröffentlichen ------------------------------------------------
+      - name: An der Registry anmelden
+        env:
+          REGISTRY_TOKEN: ${{ github.token }}
+        run: printf '%s' "${REGISTRY_TOKEN}" | docker login ghcr.io --username "${GITHUB_ACTOR}" --password-stdin
+        # Das Token des Laufs: entsteht mit dem Lauf, verfällt mit ihm, und
+        # trägt nur die oben genannten Rechte. Über stdin, damit es nicht in
+        # der Prozessliste steht. Bordmittel statt einer Login-Action (6.2a).
+
+      - name: Image hochladen (Tag = Commit, nie latest)
+        id: push
+        run: |
+          set -euo pipefail
+          ref="${IMAGE_NAME}:${GITHUB_SHA}"
+          docker tag "${LOCAL_IMAGE}" "${ref}"
+          docker push "${ref}"
+          digest="$(docker image inspect "${ref}" \
+            --format '{{range .RepoDigests}}{{println .}}{{end}}' \
+            | grep --max-count 1 "^${IMAGE_NAME}@sha256:" | cut --delimiter @ --fields 2)"
+          case "${digest}" in
+            sha256:*) ;;
+            *) echo "::error::Kein Digest für das hochgeladene Image ermittelt."; exit 1 ;;
+          esac
+          if [ "${#digest}" -ne 71 ]; then
+            echo "::error::Digest hat nicht die erwartete Länge: '${digest}'"
+            exit 1
+          fi
+          echo "Veröffentlicht: ${IMAGE_NAME}@${digest}"
+          echo "digest=${digest}" >> "${GITHUB_OUTPUT}"
+        # Der Digest ist der Fingerabdruck des Images in der Registry. Alle
+        # folgenden Schritte bezeichnen das Image nur noch über ihn.
+
+      # --- 4. Nachweise ------------------------------------------------------
+      - name: Herkunftsnachweis ausstellen
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+          create-storage-record: false
+        # Ohne sbom-path erzeugt die Action einen Herkunftsnachweis (SLSA
+        # Build Provenance): Repository, Workflow, Commit und Lauf.
+        # push-to-registry: Der Nachweis liegt zusätzlich neben dem Image.
+
+      - name: Stückliste als Nachweis ausstellen
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          sbom-path: scan/out/sbom.cdx.json
+          push-to-registry: true
+          create-storage-record: false
+
+      # --- 5. Prüf-Gate ------------------------------------------------------
+      - name: Nachweise verifizieren (mit Gegenprobe)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          set -euo pipefail
+          subject="oci://${IMAGE_NAME}@${DIGEST}"
+          policy=(
+            --repo "${GITHUB_REPOSITORY}"
+            --signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/publish.yml"
+            --source-ref refs/heads/main
+            --deny-self-hosted-runners
+          )
+
+          echo "::group::Herkunftsnachweis (von GitHub geladen)"
+          gh attestation verify "${subject}" "${policy[@]}"
+          echo "::endgroup::"
+
+          echo "::group::Herkunftsnachweis (aus der Registry geladen)"
+          gh attestation verify "${subject}" "${policy[@]}" --bundle-from-oci
+          echo "::endgroup::"
+
+          echo "::group::Stückliste"
+          gh attestation verify "${subject}" "${policy[@]}" \
+            --predicate-type https://cyclonedx.org/bom
+          echo "::endgroup::"
+
+          echo "::group::Gegenprobe: fremdes Image muss scheitern"
+          foreign="$(docker compose config --images \
+            | grep --max-count 1 '^nginxinc/.*@sha256:' \
+            | sed --regexp-extended 's/:[^:@/]+@/@/')"
+          if [ -z "${foreign}" ]; then
+            echo "::endgroup::"
+            echo "::error::Kein fremdes Image für die Gegenprobe gefunden."
+            exit 1
+          fi
+          echo "Fremdes Image: ${foreign}"
+          if gh attestation verify "oci://${foreign}" "${policy[@]}"; then
+            echo "::endgroup::"
+            echo "::error::Die Verifikation hat ein fremdes Image akzeptiert. Das Prüf-Gate ist wertlos."
+            exit 1
+          fi
+          echo "Gegenprobe bestanden: fremdes Image abgelehnt."
+          echo "::endgroup::"
+        # Der Nachweis ist nur so viel wert wie seine Prüfung. Verlangt werden
+        # dieses Repository, GENAU dieser Workflow, der Branch main und ein
+        # von GitHub betriebener Runner. Die Gegenprobe schützt vor einem
+        # Prüfwerkzeug, das alles durchwinkt: Das nginx-Image aus compose.yaml
+        # stammt nicht aus diesem Repository und muss abgelehnt werden.
+        # Grenze der Gegenprobe: Sie unterscheidet nicht, WARUM die
+        # Verifikation scheitert. Die drei bestandenen Prüfungen davor zeigen,
+        # dass das Werkzeug in diesem Lauf arbeiten kann.
