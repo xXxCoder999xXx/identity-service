@@ -196,7 +196,35 @@ jobs:
       - name: Image bauen
         run: docker build --pull --tag identity-service-api:ci .
 
+      # WEGWERF-BEWEIS - NIE MERGEN. Faehrt das Skript gegen drei Images und
+      # vergleicht die Exit-Codes: 0 (unser Image), 3 (Blindheits-Schutz bei
+      # einem Image ohne .NET-Runtime), 4 (Gate bei der Runtime vom August).
+      - name: WEGWERF-BEWEIS drei Zustaende des Scan-Skripts
+        run: |
+          set -uo pipefail
+          current='sha256:48e51f2f6798897be7ac4e775c049ed8fe60d3190f637e1f9c9dc7513efa659c'
+          august='sha256:0839314d08bb65da369135389a5d8291f75ace587fbb0488f469eb92c62eef68'
+          nginx='nginxinc/nginx-unprivileged@sha256:d715f7a85cdfea820fec743ea5aee8a22f91e00ff310ad6275d2638112d8cf8d'
+
+          sed "s/${current}/${august}/" Dockerfile > "${RUNNER_TEMP}/Dockerfile.august"
+          grep --quiet "${august}" "${RUNNER_TEMP}/Dockerfile.august" || { echo "::error::Digest nicht ersetzt"; exit 1; }
+          docker build --pull --file "${RUNNER_TEMP}/Dockerfile.august" --tag identity-service-api:august . || exit 1
+          docker pull "${nginx}" || exit 1
+
+          failed=0
+          check() {
+            bash scripts/invoke-image-scan.sh "$2"
+            actual=$?
+            echo "BEWEIS image=$2 erwartet=$1 erhalten=${actual}"
+            [ "${actual}" -eq "$1" ] || failed=1
+          }
+          check 0 identity-service-api:ci
+          check 3 "${nginx}"
+          check 4 identity-service-api:august
+          exit "${failed}"
+
       - name: Image scannen (Bericht, Blindheits-Schutz, Gate)
+        if: false
         run: bash scripts/invoke-image-scan.sh identity-service-api:ci
         # Ein Skript statt Inline-Schritten, weil der Veröffentlichungs-
         # Workflow (ADR-010) dasselbe Image nach denselben Regeln scannt: Der
