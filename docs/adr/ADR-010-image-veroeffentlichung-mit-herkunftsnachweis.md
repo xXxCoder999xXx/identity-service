@@ -136,3 +136,26 @@ Auslöser für eine Neubewertung: ein Wechsel der Plattform oder ein Staging-Zie
 außerhalb von GitHub, das die Attestations nicht verifizieren kann (dann
 cosign); ein Sicherheitsvorfall bei der Action oder bei Sigstore; der Bedarf,
 das Repository privat zu führen (ADR-004).
+
+## Nachtrag vom 08.10.2026
+
+Die ersten Läufe auf `main` (#71, #72) haben zwei unter „Konsequenzen" als
+unbelegt geführte Punkte geklärt und das Prüf-Gate verändert. Der Text oberhalb
+bleibt als Stand der Entscheidung vom 07.10.2026 unverändert.
+
+- **Sichtbarkeit des Pakets:** GHCR hat das Paket beim ersten Push **privat**
+  angelegt, und es bleibt privat (E-5-8). Die Aussage „Das Image und sein
+  Nachweis werden öffentlich" gilt damit nur für den Nachweis im
+  Sigstore-Protokoll, nicht für das Image.
+- **Prüf-Gate mit `gh` auf dem Runner:** arbeitet wie geplant.
+- **Prüf-Gate geschärft (E-5-7):** `gh attestation verify` gibt ohne Terminal
+  bei Erfolg nichts aus, und die ursprüngliche Gegenprobe scheiterte nur
+  mangels Nachweis. Das Gate gibt jetzt je Verifikation Art, Repository,
+  Branch, Workflow und Runner aus und vergleicht sie mit den erwarteten
+  Werten. Drei Gegenproben müssen scheitern: ein fremdes Image, das eigene
+  Image mit falschem Workflow und das eigene Image mit falschem Branch.
+- **Nachweise in der Registry (E-5-6):** zusätzlich neben dem Image abgelegt,
+  ohne Storage Records; ein fünftes Recht für den Job entfällt dadurch.
+- **Weiter offen:** die Aufräumregel für die Registry (sie darf die Nachweise
+  neben den Images nicht löschen) und der Beleg, dass Dependabot den Pin von
+  `actions/attest` pflegt.
