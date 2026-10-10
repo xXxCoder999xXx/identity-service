@@ -6,10 +6,12 @@
 # damit Dependabot (Oekosystem docker-compose) Tag und Digest pflegt - in einem
 # run:-Schritt der Pipeline saehe Dependabot das Image nicht.
 #
-# Aufruf (lokal und in der CI identisch):
-#   docker build --tag identity-service-api:ci .
-#   docker save --output scan/in/app.tar identity-service-api:ci
-#   docker compose --file compose.scan.yaml run --rm grype docker-archive:/in/app.tar
+# Aufruf nur ueber das Skript (CI und Veroeffentlichung nutzen dasselbe):
+#   bash scripts/invoke-image-scan.sh [Image]
+#
+# Das Skript exportiert das Image, erzeugt Bericht und Stueckliste und prueft
+# Blindheits-Schutz und Gate (Exit-Codes 2, 3, 4 - siehe Skriptkopf). Ein
+# direkter Aufruf von "docker compose run grype" ueberspringt beide Pruefungen.
 #
 # Der Ordner scan/ ist nie versioniert (.gitignore) und liegt ausserhalb des
 # Build-Kontexts (.dockerignore ist eine Erlaubnisliste).
