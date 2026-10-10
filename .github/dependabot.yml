@@ -5,10 +5,10 @@
 # Determinismus; der Bot liefert kontrollierte Bewegung – als PR, der dieselbe
 # Pipeline durchläuft wie jeder Code und einen menschlichen Merge braucht.
 #
-# ADR-005-Kandidat: Dependabot statt Renovate. Begründung: plattformnativ,
-# keine Dritt-App mit Repo-Zugriff (kleinere Lieferketten-Fläche, 6.2a),
-# ausreichend für unsere zwei Ökosysteme. Renovate ist mächtiger (Gruppierung,
-# Regex-Manager) – Neubewertungs-Auslöser: spürbarer PR-Lärm.
+# ADR-005: Dependabot statt Renovate. Kurzfassung: plattformnativ, keine
+# Dritt-App mit Repo-Zugriff (kleinere Lieferketten-Fläche, 6.2a), ausreichend
+# für unsere fünf Ökosysteme. Alternativen, Befunde aus dem Betrieb und die
+# Auslöser für eine Neubewertung stehen im ADR.
 # =============================================================================
 version: 2
 updates:
