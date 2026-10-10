@@ -36,7 +36,7 @@ Neuaufbau eines Microservice (.NET 10 / C# 14) nach Clean/Hexagonal-Architektur 
 
 ## 3. Repository und Befehle
 
-Karte: `src/IdentityService.{Domain,Application,Infrastructure,Api}`, `tests/`, `scripts/` (PowerShell), `docs/adr/`, `docs/sitzungen/`, `docs/governance/` (Ruleset), `.github/` (Workflows, `dependabot.yml`, `CODEOWNERS`), `certs/` (lokal, nie versioniert). Wurzel: `IdentityService.slnx`, `Directory.Build.props`, `Directory.Packages.props`, `nuget.config`, `global.json`, `.editorconfig`, `Dockerfile`, `.dockerignore`, `compose.yaml`, `compose.scan.yaml` (Image-Scanner, ADR-009), `nginx.conf`.
+Karte: `src/IdentityService.{Domain,Application,Infrastructure,Api}`, `tests/`, `scripts/` (PowerShell für lokale Werkzeuge, Bash für Schritte, die CI und Veröffentlichung teilen), `docs/adr/`, `docs/sitzungen/`, `docs/governance/` (Ruleset), `.github/` (Workflows `ci.yml`, `codeql.yml`, `publish.yml`; `dependabot.yml`, `CODEOWNERS`), `certs/` (lokal, nie versioniert). Wurzel: `IdentityService.slnx`, `Directory.Build.props`, `Directory.Packages.props`, `nuget.config`, `global.json`, `.editorconfig`, `Dockerfile`, `.dockerignore`, `compose.yaml`, `compose.scan.yaml` (Image-Scanner, ADR-009), `nginx.conf`.
 
 Lokal == CI. Die Reihenfolge ist die Urteils-Hierarchie und bleibt:
 
@@ -57,6 +57,7 @@ Der Stack ist nur über nginx erreichbar: `https://localhost:8443/health`. Quali
 - Conventional Commits: `type(scope): subject` mit `feat|fix|docs|chore|refactor|test|build|ci|perf|style|revert`; Betreff englisch, Imperativ, ohne Punkt. Squash übernimmt den **PR-Titel** als Commit-Betreff – er ist der künftige Commit und wird vor dem Merge geprüft.
 - **Ein Thema pro Branch.** Gekoppelte Änderungen gehören atomar in **einen** PR, weil die CI Zustände prüft, nicht Absichten: SDK-Pin in `global.json` + Build-Stage-Digest im Dockerfile; Service-Name + Zertifikats-SAN + nginx-`proxy_ssl_name`; CodeQL `init` + `analyze`.
 - Reparatur-Branch vom **aktuellen** `main` schneiden, statt Konflikte auf altem Stand zu lösen, wenn der Zielinhalt bekannt ist.
+- Wegwerf-PRs (Rot-Beweise) entstehen nur nach ausdrücklicher Freigabe, als Entwurf, und werden sofort nach dem Ablesen geschlossen – nie gemergt. Ein Rot-Beweis gehört **vor** den Merge der eigentlichen Änderung.
 - Bot- und KI-PRs: Release Notes lesen. SemVer beschreibt die Absicht des Herausgebers, nicht mein Risiko.
 
 ## 5. Sicherheit – harte Regeln
@@ -101,7 +102,7 @@ Dein Wirken ist Teil der Angriffsfläche. Ohne meine ausdrückliche Freigabe im 
 
 - Syntaktisch gültiges YAML ist nicht semantisch gültig: `groups` unter `schedule` in `dependabot.yml` wurde lautlos ignoriert, das SAST-Gate war rund zwei Wochen außer Betrieb. Nach jeder `.github/**`-Änderung die Struktur maschinell prüfen; Config-only-PRs wurden schon mit 0 Checks gemergt.
 - Reparatur-PRs fügen das Richtige hinzu, entfernen aber den defekten Rest nicht (vier Fälle: `dependabot.yml`, `.gitignore`, Skript-Dublette, …). Nach jedem Fix prüfen, dass nur noch **eine** Quelle der Wahrheit existiert.
-- `stderr` ist bei nativen Programmen kein Fehlerindikator (openssl, git, docker): Nur der Exit-Code zählt. Skripte: PowerShell 5.1, reines ASCII (wie die bestehenden, Umlaute als ae/oe/ue), melden statt reparieren, geben nie Dateiinhalte von Schlüsseln aus.
+- `stderr` ist bei nativen Programmen kein Fehlerindikator (openssl, git, docker): Nur der Exit-Code zählt. Skripte: reines ASCII (wie die bestehenden, Umlaute als ae/oe/ue), melden statt reparieren, geben nie Dateiinhalte von Schlüsseln aus. Lokale Werkzeuge in PowerShell 5.1; Bash nur für Schritte, die auf dem Runner laufen – mit unterscheidbaren Exit-Codes und `bash -n` nach jeder Änderung.
 - Die Reparatur eines fail-closed-Fehlers kann fail-open erzeugen (leere `KnownNetworks` bedeutet „alles akzeptieren“). Nach Sicherheitsfixes beide Zustände empirisch prüfen.
 - Ein Prüfwerkzeug, das nichts findet, weil es nicht suchen konnte (leere Datenbank, nicht lesbare Schicht), meldet fälschlich Erfolg. Vor dem Scharfschalten einmal gegen den echten Gegenstand verifizieren.
 - Grün ist nicht gleich funktionierend: Messen statt hoffen (Header per echtem Request prüfen, der Build beweist die Vererbung).

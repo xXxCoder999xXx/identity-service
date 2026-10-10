@@ -6,11 +6,12 @@ paths:
   - "nuget.config"
   - "global.json"
   - "**/packages.lock.json"
+  - "scripts/*.sh"
 ---
 
 # Lieferkette und CI – Regeln für diese Pfade
 
-Gilt zusätzlich zu `CLAUDE.md`. Die Begründungen stehen in ADR-003 und in den Kopfkommentaren von `ci.yml`, `codeql.yml` und `dependabot.yml`.
+Gilt zusätzlich zu `CLAUDE.md`. Die Begründungen stehen in ADR-003, ADR-009, ADR-010 und in den Kopfkommentaren von `ci.yml`, `codeql.yml`, `publish.yml` und `dependabot.yml`.
 
 ## Workflows
 
@@ -22,6 +23,8 @@ Gilt zusätzlich zu `CLAUDE.md`. Die Begründungen stehen in ADR-003 und in den 
 - **Schrittfolge** in `ci.yml` ist die Urteils-Hierarchie und bleibt: Restore (`--locked-mode`, eigener benannter Schritt) → Build mit `--no-restore` → Format mit `--verify-no-changes --no-restore` → Test mit `--no-build`. Folgestufen lösen nie still neu auf und bauen nie neu.
 - Sicherheitswerkzeuge in der Pipeline sind fail-closed: Kann ein Werkzeug nicht arbeiten (keine Datenbank, kein Netz), wird die Pipeline rot, nie grün.
 - Lädt ein Werkzeug zur Laufzeit Binaries nach, pinnt der Action-SHA nur den Wrapper, nicht das Werkzeug. Bevorzugt: per Digest gepinntes Container-Image. Jedes neue Pipeline-Werkzeug ist eine Abhängigkeit (Vetting, Pin, ADR).
+- **`publish.yml`** (ADR-010) ist der einzige Workflow mit Schreibrechten (`packages: write`, `id-token: write`, `attestations: write`): Auslöser nur Push nach `main`, nie Pull Request, kein vom Einreicher kontrollierter Text. Reihenfolge bleibt: bauen → Smoke-Test → Image-Scan → veröffentlichen → Nachweise → Prüf-Gate. Er ist kein Pflicht-Check; ein Fehlschlag zeigt sich erst nach dem Merge.
+- **Geteilte Schritte** stehen als Bash-Skript unter `scripts/` (`new-throwaway-certificates.sh`, `invoke-image-scan.sh`), Aufruf über `bash scripts/...`. Der Schwellenwert des Image-Scans steht nur in `invoke-image-scan.sh`, nie zusätzlich in einem Workflow.
 
 ## Konfigurationsdateien für andere Werkzeuge
 
