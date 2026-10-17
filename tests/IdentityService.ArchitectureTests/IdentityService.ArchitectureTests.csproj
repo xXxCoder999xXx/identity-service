@@ -12,9 +12,7 @@
   <!-- Bewusst OHNE Version-Attribute: Die Versionen verwaltet zentral
        Directory.Packages.props (ADR-003). -->
   <ItemGroup>
-    <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit.v3" />
-    <PackageReference Include="xunit.runner.visualstudio" />
   </ItemGroup>
 
   <!-- Das Testprojekt referenziert alle Schichten, denn es muss sie prüfen -
