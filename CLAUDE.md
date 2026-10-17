@@ -48,7 +48,7 @@ dotnet test --configuration Release --no-build
 docker compose up --build
 ```
 
-Der Stack ist nur über nginx erreichbar: `https://localhost:8443/health`. Qualitätsregeln (TreatWarningsAsErrors, Analyzer, Nullable, NuGetAudit, Lockfiles, TargetFramework) leben zentral in `Directory.Build.props`; `.csproj`-Dateien wiederholen sie nicht (zweite Wahrheit). Paketversionen stehen nur in `Directory.Packages.props`, `packages.lock.json` wird committet, die SDK-Version steht nur in `global.json`.
+Der Stack ist nur über nginx erreichbar: `https://localhost:8443/health`.
 
 ## 4. Git, Pull Requests, Commits
 
@@ -100,9 +100,8 @@ Dein Wirken ist Teil der Angriffsfläche. Ohne meine ausdrückliche Freigabe im 
 
 ## 7. Fallstricke, die uns schon Zeit gekostet haben
 
-- Syntaktisch gültiges YAML ist nicht semantisch gültig: `groups` unter `schedule` in `dependabot.yml` wurde lautlos ignoriert, das SAST-Gate war rund zwei Wochen außer Betrieb. Nach jeder `.github/**`-Änderung die Struktur maschinell prüfen; Config-only-PRs wurden schon mit 0 Checks gemergt.
 - Reparatur-PRs fügen das Richtige hinzu, entfernen aber den defekten Rest nicht (vier Fälle: `dependabot.yml`, `.gitignore`, Skript-Dublette, …). Nach jedem Fix prüfen, dass nur noch **eine** Quelle der Wahrheit existiert.
-- `stderr` ist bei nativen Programmen kein Fehlerindikator (openssl, git, docker): Nur der Exit-Code zählt. Skripte: reines ASCII (wie die bestehenden, Umlaute als ae/oe/ue), melden statt reparieren, geben nie Dateiinhalte von Schlüsseln aus. Lokale Werkzeuge in PowerShell 5.1; Bash nur für Schritte, die auf dem Runner laufen – mit unterscheidbaren Exit-Codes und `bash -n` nach jeder Änderung.
+- `stderr` ist bei nativen Programmen kein Fehlerindikator (openssl, git, docker): Nur der Exit-Code zählt.
 - Die Reparatur eines fail-closed-Fehlers kann fail-open erzeugen (leere `KnownNetworks` bedeutet „alles akzeptieren“). Nach Sicherheitsfixes beide Zustände empirisch prüfen.
 - Ein Prüfwerkzeug, das nichts findet, weil es nicht suchen konnte (leere Datenbank, nicht lesbare Schicht), meldet fälschlich Erfolg. Vor dem Scharfschalten einmal gegen den echten Gegenstand verifizieren.
 - Grün ist nicht gleich funktionierend: Messen statt hoffen (Header per echtem Request prüfen, der Build beweist die Vererbung).

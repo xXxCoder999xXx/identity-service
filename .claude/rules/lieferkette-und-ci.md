@@ -28,7 +28,7 @@ Gilt zusätzlich zu `CLAUDE.md`. Die Begründungen stehen in ADR-003, ADR-009, A
 
 ## Konfigurationsdateien für andere Werkzeuge
 
-- Syntaktisch gültiges YAML ist nicht semantisch gültig. Nach jeder Änderung die Struktur maschinell prüfen (parsen, Schlüsselhierarchie ausgeben) und kontrollieren, dass die Checks im PR wirklich gelaufen sind. Diagnoseoberflächen von Werkzeugen melden eigene Fehlkonfiguration nicht zuverlässig.
+- Syntaktisch gültiges YAML ist nicht semantisch gültig. Nach jeder Änderung die Struktur maschinell prüfen (parsen, Schlüsselhierarchie ausgeben) und kontrollieren, dass die Checks im PR wirklich gelaufen sind. Diagnoseoberflächen von Werkzeugen melden eigene Fehlkonfiguration nicht zuverlässig. Vorfall: `groups` unter `schedule` in `dependabot.yml` wurde lautlos ignoriert, das SAST-Gate war rund zwei Wochen außer Betrieb; Config-only-PRs wurden schon mit 0 Checks gemergt.
 - `dependabot.yml`: Änderungen **additiv** (bestehende Blöcke unangetastet), Commit-Präfix `chore` mit `include: scope`. Gruppen nur für nachweislich gekoppelte Abhängigkeiten (Vorbild: `github/codeql-action*`), nie `patterns: ["*"]`. Dependabot sieht keine `docker run`-Aufrufe in Workflow-Schritten.
 - Bot-PRs durchlaufen dieselbe Pipeline, werden nie auto-gemergt und nie ungelesen übernommen.
 
