@@ -14,11 +14,15 @@
       WICHTIG (Regel 6.3.2, Slopsquatting-Prüfung): Verifiziere jedes Paket vor
       dem ersten Restore auf nuget.org - exakte Schreibweise, Herausgeber
       (Microsoft bzw. .NET Foundation / xUnit-Projekt), Downloadzahlen,
-      Pflegezustand - und trage die aktuelle stabile Version ein. Die Versionen
-      unten sind der Stand zum Zeitpunkt der Sitzung.
+      Pflegezustand - und trage die aktuelle stabile Version ein.
     -->
-    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
-    <PackageVersion Include="xunit.v3" Version="3.2.2" />
-    <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.1" />
+    <!--
+      xunit.v3 4.x läuft nur noch auf der Microsoft Testing Platform v2
+      (ADR-002, Nachtrag). Das Testprojekt ist selbst das Programm; die
+      VSTest-Pakete Microsoft.NET.Test.Sdk und xunit.runner.visualstudio
+      entfallen bewusst (weniger Lieferkette, nur ein Testweg). Den Modus
+      von dotnet test legt global.json fest ("test.runner").
+    -->
+    <PackageVersion Include="xunit.v3" Version="4.0.2" />
   </ItemGroup>
 </Project>
