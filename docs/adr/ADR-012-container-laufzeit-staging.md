@@ -55,8 +55,8 @@ Teilentscheidungen:
 
 ### Vertrauensquelle Docker-Repository
 
-- Der APT-Schlüssel wird heruntergeladen und sein Fingerprint mit dem Wert
-  in der Docker-Dokumentation (`docs.docker.com`) verglichen. Bei
+- Der APT-Schlüssel wird heruntergeladen und sein Fingerprint mit dem in
+  diesem ADR festgehaltenen Wert verglichen (siehe Nachtrag). Bei
   Abweichung wird abgebrochen.
 - Der Schlüssel gilt nur für die Quellen-Zeile des Docker-Repositorys
   (`signed-by`). Er kann damit keine Pakete aus den Debian-Quellen
@@ -66,8 +66,8 @@ Teilentscheidungen:
   erst das APT-Pinning aus E-5-36.
 - Paketnamen werden vor der Installation gegen den Paketindex des
   Repositorys geprüft (Slopsquatting, 6.3.2). Vor dem „Ja“ von `apt` wird die
-  angezeigte Paketliste gelesen. Laut Docker-Dokumentation gehört für den
-  Rootless-Modus `docker-ce-rootless-extras` dazu, aus Debian kommt `uidmap`.
+  angezeigte Paketliste gelesen. Installiert wird mit
+  `--no-install-recommends` und einer ausdrücklichen Liste (siehe Nachtrag).
 - Das Docker-Repository wird in die erlaubten Quellen von
   `unattended-upgrades` aufgenommen. Die genaue Herkunftsangabe wird aus
   `apt-cache policy` abgelesen, nicht geraten.
@@ -80,9 +80,13 @@ Teilentscheidungen:
 - `loginctl enable-linger deploy`, damit der Daemon ohne Anmeldung läuft
 - cgroup-Delegation per Drop-in für `user@.service` mit
   `Delegate=cpu cpuset io memory pids`
-- Verwaltung durch die Projekt-Ownerin per `sudo -iu deploy` vom
-  Admin-Benutzer aus; `XDG_RUNTIME_DIR` und `DOCKER_HOST` stehen in der
-  Profil-Datei von `deploy`
+- Der systemweite Docker-Dienst mit Root (`docker.service`,
+  `docker.socket`), den das Paket `docker-ce` startet, wird abgeschaltet und
+  maskiert
+- `"userland-proxy": false` in `~/.config/docker/daemon.json` von `deploy`
+  und das Kernel-Modul `br_netfilter`, damit nginx die echte Client-IP sieht
+- Verwaltung durch die Projekt-Ownerin per `sudo machinectl shell deploy@`
+  vom Admin-Benutzer aus (Paket `systemd-container`)
 
 ### Pflicht-Gegenproben
 
@@ -103,6 +107,10 @@ sind:
    IPv4 und IPv6 getrennt gemessen.
 9. Mit der Server-Firewall (Roadmap-Schritt danach): Ein von einem Container
    veröffentlichter Port wird von der Host-Firewall tatsächlich blockiert.
+10. `systemctl is-enabled docker.service docker.socket` meldet `masked`, und
+    `/var/run/docker.sock` existiert nicht.
+11. Ein Container hinter einem veröffentlichten Port sieht die echte
+    Quell-IP eines externen Aufrufs (beim nginx-Schritt).
 
 ## Betrachtete Alternativen
 
@@ -130,9 +138,13 @@ sind:
    18.10.2026. Ein Systembenutzer bekommt keine Unter-IDs und standardmäßig
    kein Home-Verzeichnis und die Shell `nologin`. Rootless funktioniert damit
    nicht ohne Nacharbeit, und `sudo -iu deploy` scheitert.
-7. **Verwaltung per `machinectl shell deploy@`:** verworfen. Braucht das
-   zusätzliche Paket `systemd-container` ohne Vorteil gegenüber
-   `sudo -iu deploy` mit gesetzten Umgebungsvariablen.
+7. **Verwaltung per `sudo -iu deploy`:** verworfen (Nachtrag 18.10.2026,
+   ursprünglich empfohlen). Laut Docker-Dokumentation scheitert danach
+   `systemctl --user` mit „Failed to connect to bus“, weil keine Sitzung über
+   `pam_systemd` entsteht; `rootlesskit` erkennt systemd nach `sudo su` nicht.
+   Für Benutzer ohne Login nennt die Dokumentation `machinectl shell`.
+8. **`docker-buildx-plugin` mitinstallieren:** verworfen. Der Server baut
+   keine Images, er startet das in der CI gebaute Image per Digest.
 
 ## Begründung
 
@@ -179,8 +191,8 @@ sind:
 
 **Neue Pflichten**
 
-- Fingerprint des Docker-Schlüssels im Sitzungsbericht festhalten; bei einem
-  Schlüsselwechsel durch Docker erneut gegen die Dokumentation prüfen.
+- Bei einem Schlüsselwechsel durch Docker abbrechen und den neuen Schlüssel
+  über mindestens zwei Wege prüfen, bevor er zugelassen wird.
 - Bei jedem neuen Docker-Paket die Pinning-Liste erweitern, sonst wird es
   nicht installiert (fail closed).
 - Gegenproben 3 und 4 nach größeren Docker- oder systemd-Updates
@@ -200,3 +212,64 @@ sind:
 - Production-Betrieb oder echte Daten auf einem Server mit dieser Laufzeit.
 - Eine Schwachstelle in `rootlesskit`, im Netzwerk-Helfer oder in User
   Namespaces wird im CISA-KEV-Katalog geführt.
+
+## Nachtrag 2026-10-18: Recherche vor der Installation
+
+Die Recherche vor der Installation (Primärquellen, Stand 18.10.2026) hat drei
+Annahmen dieses ADR widerlegt und zwei Lücken gefunden. Die betroffenen
+Stellen oben sind angepasst.
+
+**Fingerprint ohne Quelle in der Dokumentation.** Die Docker-Dokumentation
+nennt den Fingerprint des APT-Schlüssels nicht mehr (Seiten für Debian,
+Ubuntu und Rootless geprüft). Ersatzweise geprüft:
+
+- Der Schlüssel von `https://download.docker.com/linux/debian/gpg` ist
+  identisch mit dem Schlüssel auf `keyserver.ubuntu.com`.
+- `dists/trixie/InRelease` (14.10.2026) ist mit diesem Schlüssel gültig
+  signiert.
+
+Ein Keyserver nimmt Schlüssel von jedem an; beide Prüfungen belegen
+Übereinstimmung, keine unabhängige Bestätigung durch Docker. Für Staging
+akzeptiert.
+
+| Angabe | Wert |
+|---|---|
+| Hauptschlüssel | `9DC8 5822 9FC7 DD38 854A E2D8 8D81 803C 0EBF CD88` |
+| Unterschlüssel (signiert) | `D330 6A01 8370 199E 527A E799 7EA0 A9C3 F273 FCD8` |
+| Kennung | `Docker Release (CE deb) <docker@docker.com>`, rsa4096, 2017-02-22 |
+| `Origin` / `Label` | `Docker` / `Docker CE` |
+
+**Paketliste.** Das Repository enthält für trixie neben der Engine auch
+`cagent` (KI-Agent), `docker-model-plugin` (Modelle) und
+`docker-secrets-engine`. Sie berühren das Agentic- bzw. LLM-Gate (6.4, 6.5)
+und werden nie installiert; das Pinning (E-5-36) lässt nur diese Pakete zu:
+
+| Paket | Version 18.10.2026 | Quelle |
+|---|---|---|
+| `docker-ce`, `docker-ce-cli`, `docker-ce-rootless-extras` | 5:29.9.1-1~debian.13~trixie | Docker |
+| `containerd.io` | 2.4.2-2~debian.13~trixie | Docker |
+| `docker-compose-plugin` | 5.6.0-1~debian.13~trixie | Docker |
+| `uidmap` | 1:4.17.4-2 | Debian |
+| `dbus-user-session` (Abhängigkeit von `docker-ce-rootless-extras`) | 1.16.2-2 | Debian |
+| `systemd-container` (Quellpaket `systemd`) | 257.13-1~deb13u1 | Debian |
+
+`docker-ce` empfiehlt `apparmor`, `git`, `pigz` und `procps`. Installiert
+wird mit `--no-install-recommends`; AppArmor wirkt im Rootless-Modus laut
+Dokumentation ohnehin nicht.
+
+**Widerlegt bzw. ergänzt:**
+
+1. `sudo -iu deploy` taugt nicht zur Verwaltung (Alternative 7). Ersatz:
+   `sudo machinectl shell deploy@` mit `systemd-container` aus Debian, keine
+   neue Vertrauensquelle.
+2. Das Paket `docker-ce` startet sofort einen Docker-Dienst mit Root. Er wird
+   abgeschaltet und maskiert (Gegenprobe 10).
+3. Die echte Client-IP kommt ab RootlessKit v3.0 nur mit
+   `"userland-proxy": false` und `br_netfilter` an (Gegenprobe 11). Die
+   mitgelieferte RootlessKit-Version wird bei der Installation gemessen.
+
+**CVE-Lage:** CISA KEV (Katalog vom 16.10.2026) ohne Eintrag 2026 zu Docker,
+containerd, runc, systemd oder shadow. Im `runc` von trixie ist
+CVE-2026-41579 offen (behoben in 1.3.6, 1.4.3, 1.5.0); laut Beschreibung unter
+Docker nicht ausnutzbar. `containerd.io` bringt ein eigenes `runc` mit, dessen
+Version bei der Installation gemessen wird.
