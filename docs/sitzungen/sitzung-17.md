@@ -103,6 +103,9 @@ Server eingegeben und die Ausgaben zurückgemeldet.
 - Ein automatisches Docker-Update tauscht nur die Programme aus. Der
   laufende Daemon von `deploy` bleibt alt, bis er oder der Server neu
   startet; ein Docker-Update allein fordert keinen Neustart an.
+- Ein Tag ist ein Zeiger: `nginx-unprivileged:1.30.5` wird wöchentlich neu
+  gebaut, ohne dass sich die Versionsnummer ändert. Nur der Digest zeigt, ob
+  sich der Inhalt geändert hat; Dependabot meldet das als „1.30.5 to 1.30.5“.
 - Ein Terminal, das lange Zeilen umbricht, kann eine Konfigurationsdatei
   zerlegen; APT reagierte fail closed („No priority (or zero) specified for
   pin“). Kurze Zeilen mit Shell-Variablen vermeiden das.
@@ -143,8 +146,10 @@ Update-Lücke (Roadmap Punkt 3).
   die Projekt-Ownerin
 - Erster echter Lauf von `unattended-upgrades` (19.10.2026 ca. 07:00) nicht
   geprüft
-- Image `nginxinc/nginx-unprivileged` (Digest aus `compose.yaml`) liegt im
-  Image-Speicher von `deploy`; wird beim Deploy ohnehin gebraucht
+- Im Image-Speicher von `deploy` liegt das nginx-Image der Probe mit dem
+  **alten** Digest `sha256:d715f7a8…` (Build 05.10.2026). Seit #95 pinnt
+  `compose.yaml` `sha256:8f18dedf…` (Build 12.10.2026). Das alte Image beim
+  Plattenplatz-Schritt entfernen (`docker image rm`)
 - Fingerprint des Docker-Schlüssels nur über Keyserver und
   `InRelease`-Signatur belegt, nicht durch Docker selbst (für Staging
   akzeptiert, ADR-012)
@@ -224,6 +229,19 @@ Daten `~/.local/share/docker`, CLI-Kontext `rootless`. Anmeldung nur per
 **Konfiguration, die zusammenwirkt:** `Automatic-Reboot` um 04:00 (E-5-32)
 macht Gegenprobe 4 betriebsrelevant; nach jedem automatischen Neustart muss
 der Daemon von `deploy` über Linger von selbst starten.
+
+**nginx-Image (aus der Registry aufgelöst, 19.10.2026):**
+`nginxinc/nginx-unprivileged:1.30.5` zeigt auf den OCI-Index
+`sha256:8f18dedfceea3d7feb98792810c8c9925c985890ade257f2ec1b2f492b4eaebb`
+(amd64 gebaut 12.10.2026), übernommen mit Dependabot-PR #95. Der vorherige
+Digest `sha256:d715f7a8…` (gebaut 05.10.2026) gehörte zum selben Tag: Das
+Image wird unter unverändertem Tag wöchentlich neu gebaut, deshalb heißt der
+PR „from 1.30.5 to 1.30.5“.
+
+**CodeQL-Action (aus dem Primär-Repo aufgelöst, 19.10.2026):** `v4.39.0`
+(Tag vom 15.10.2026) zeigt auf Commit
+`6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee`; `init` und `analyze` sind seit
+Dependabot-PR #96 gemeinsam auf diesen SHA gehoben.
 
 **Unkritische Meldungen im Docker-Journal:** `Deleting nftables … No such
 file or directory` (nach frischem Boot), `failed check for fsverity
