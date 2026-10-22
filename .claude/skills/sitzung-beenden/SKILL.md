@@ -11,9 +11,10 @@ Ziel: ein Bericht, auf dem die nächste Sitzung ohne Rückfragen aufsetzen kann.
 
 1. **Nummer und Datum.** In `docs/sitzungen/` die höchste vorhandene Nummer bestimmen; der neue Bericht ist `sitzung-NN.md` mit der nächsten Nummer (zweistellig). Datum im Format `TT.MM.JJJJ`.
 2. **Fakten sammeln.** Aus dem Gespräch dieser Sitzung und aus `git log` (gemergte PRs, Commits auf dem aktuellen Branch). Nur aufnehmen, was in dieser Sitzung tatsächlich geschehen ist. Nichts schätzen und nichts schöner darstellen: Nicht Geprüftes steht unter „Offene Punkte", nicht unter „Erledigt".
-3. **Bericht schreiben** nach dem Aufbau unten, auf Deutsch mit echten Umlauten.
-4. **Dem Nutzer zusammenfassen**, was im Bericht steht und was als Erstes in der nächsten Sitzung ansteht.
-5. **Nicht selbst committen.** Vorschlagen: Branch `docs/sitzung-NN`, PR-Titel `docs: add session report NN`. Commit und Push nur auf ausdrückliche Aufforderung (CLAUDE.md Abschnitt 6).
+3. **Lehrstoff erstellen.** Vor dem Bericht aus den Konzepten der Sitzung ein Lehrdokument als Claude Doc anlegen (Docs-Connector), Titel `Lehrstoff: <Thema der Sitzung>`. Der Link kommt in den Bericht (Abschnitt 1 und „Vor oder in der Sitzung zu verstehen"). Ist kein Docs-Connector verfügbar, fragen, ob stattdessen eine Markdown-Datei angelegt werden soll; nichts eigenmächtig ins Repository legen.
+4. **Bericht schreiben** nach dem Aufbau unten, auf Deutsch mit echten Umlauten.
+5. **Dem Nutzer zusammenfassen**, was im Bericht steht und was als Erstes in der nächsten Sitzung ansteht.
+6. **Nicht selbst committen.** Vorschlagen: Branch `docs/sitzung-NN`, PR-Titel `docs: add session report NN`. Commit und Push nur auf ausdrückliche Aufforderung (CLAUDE.md Abschnitt 6).
 
 ## Aufbau des Berichts
 
@@ -68,3 +69,4 @@ Ziel: ein Bericht, auf dem die nächste Sitzung ohne Rückfragen aufsetzen kann.
 - **Keine Geheimnisse:** keine Schlüssel- oder Zertifikatsinhalte, keine Tokens, keine Connection Strings, keine personenbezogenen Daten.
 - **Selbsttragend:** Der Bericht verweist nicht auf „den Chat". Wer nur den Bericht liest, muss den Stand verstehen.
 - **Roadmap:** Der erste Punkt ist der Einstieg der nächsten Sitzung (`/sitzung-starten` beginnt dort). Jeder Punkt nennt seine Begründung.
+- **Lehrstoff:** gegliedert nach Lernzielen; je Konzept Warum, Funktionsweise, Alternativen mit Trade-offs und ein „Merke"-Satz; echte Fehler und Lehren der Sitzung als Beispiele; am Ende Merksätze und ein Spickzettel der Befehle mit Platzhaltern in Großbuchstaben; Diagramm, wo ein Ablauf erklärt wird. Keine Quizfragen (CLAUDE.md Abschnitt 1). Dieselben Geheimnis-Regeln wie für den Bericht, zusätzlich keine IP-Adressen, Hostnamen, Benutzernamen und E-Mail-Adressen, weil das Dokument außerhalb des Repositorys liegt.
