@@ -1,0 +1,3 @@
+# Erlaubnisliste ohne Eintraege (Fail-closed): Das lego-Image kopiert nur aus
+# dem gepinnten Upstream-Image und braucht keine Datei aus dem Kontext.
+*

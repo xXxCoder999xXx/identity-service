@@ -76,6 +76,18 @@ updates:
       prefix: "chore"
       include: "scope"
 
+  # lego-Image (ADR-014): Quelle der Programmdatei und distroless-Basis, beide
+  # per Digest gepinnt. Eigener Eintrag, weil "docker" nur das Verzeichnis
+  # liest, das unter directory steht. Ohne ihn blieben beide Pins stehen.
+  - package-ecosystem: "docker"
+    directory: "/docker/lego"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+
   # Images in compose.yaml (nginx-unprivileged). Eigenes Ökosystem: "docker"
   # liest keine Compose-Dateien.
   - package-ecosystem: "docker-compose"
