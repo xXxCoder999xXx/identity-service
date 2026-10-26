@@ -206,3 +206,83 @@ jobs:
         # oder höher mit verfügbarem Fix ab. Jeder Abschnitt erscheint im
         # Protokoll als eigene Gruppe; die Exit-Codes stehen im Skriptkopf.
         # Aufruf über "bash": unabhängig vom Ausführungs-Bit der Datei.
+
+  # ---------------------------------------------------------------------------
+  # ADR-014 (E-5-61): dasselbe Gate für jedes fremde Image auf Staging.
+  # Eigener Job statt Schritte in "Image-Scan": Das Gate eines fremden Images
+  # kann rot sein, ohne dass wir es beheben können (lego wartet auf ein
+  # Release mit neuerem Go). Im Required Check würde das jeden PR blockieren;
+  # eine Matrix dort würde den Check-Namen des Rulesets ändern. Bewusst KEIN
+  # Required Check und KEIN continue-on-error: rot bleibt sichtbar rot.
+  # Aufnahme als Required Check ist eine eigene Entscheidung (ADR-014), fällig
+  # vor dem ersten Deploy von lego.
+  # Läuft auch im Wochenlauf: neue CVEs in fremden Images ohne neuen Commit.
+  # ---------------------------------------------------------------------------
+  third-party-image-scan:
+    name: Image-Scan Drittanbieter (${{ matrix.profile }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false        # ein rotes lego darf den nginx-Scan nicht abbrechen
+      matrix:
+        include:
+          # counter: ein Profil, das zu diesem Image NICHT passt (Gegenprobe).
+          # lego/api trifft die Prüfung des Betriebssystems, nginx/lego die
+          # Prüfung der Komponenten (debian passt, pkg:golang/ fehlt).
+          - profile: lego
+            counter: api
+          - profile: nginx
+            counter: lego
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false  # Begründung siehe Job "Build & Test"
+
+      - name: Image bereitstellen
+        env:
+          PROFILE: ${{ matrix.profile }}
+        run: |
+          case "${PROFILE}" in
+            lego)
+              docker build --pull --tag identity-service-lego:ci docker/lego
+              image="identity-service-lego:ci"
+              ;;
+            nginx)
+              # Eine Quelle der Wahrheit: das Image, das compose.yaml startet
+              # und Dependabot dort pflegt - kein zweiter Pin in diesem Workflow.
+              image="$(docker compose --file compose.yaml config --format json | jq -r '.services.nginx.image // empty')"
+              [ -n "${image}" ] || { echo "::error::Kein nginx-Image in compose.yaml gefunden."; exit 1; }
+              docker pull "${image}"
+              ;;
+            *)
+              echo "::error::Unbekanntes Profil '${PROFILE}'."
+              exit 1
+              ;;
+          esac
+          echo "IMAGE=${image}" >> "${GITHUB_ENV}"
+
+      - name: Gegenprobe (falsches Profil muss mit Exit 3 scheitern)
+        env:
+          COUNTER: ${{ matrix.counter }}
+        run: |
+          code=0
+          bash scripts/invoke-image-scan.sh "${IMAGE}" "${COUNTER}" || code=$?
+          if [ "${code}" -ne 3 ]; then
+            echo "::error::Gegenprobe: Profil '${COUNTER}' gegen ${IMAGE} ergab Exit ${code}, erwartet 3 (Blindheits-Schutz)."
+            exit 1
+          fi
+          echo "Gegenprobe bestanden: Blindheits-Schutz greift (Exit 3)."
+        # Steht VOR dem Gate: Ein rotes Gate würde spätere Schritte
+        # überspringen. Genau Exit 3, damit ein Netz- oder Datenbankfehler
+        # (Exit 2) nicht als Beweis durchgeht. Beweist bei jedem Lauf, dass der
+        # Blindheits-Schutz nicht abgeschwächt wurde.
+
+      - name: Image scannen (Bericht, Blindheits-Schutz, Gate)
+        env:
+          PROFILE: ${{ matrix.profile }}
+        run: bash scripts/invoke-image-scan.sh "${IMAGE}" "${PROFILE}"
+        # Dasselbe Skript und derselbe Schwellenwert wie für die API; das
+        # Profil legt fest, was der Scanner erkennen muss. Blinde Flecken und
+        # die zweite Quelle stehen im Profil im Skript.
