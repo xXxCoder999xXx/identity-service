@@ -7,7 +7,7 @@ networks:
 
 services:
   nginx:
-    image: nginxinc/nginx-unprivileged:1.30.5@sha256:8f18dedfceea3d7feb98792810c8c9925c985890ade257f2ec1b2f492b4eaebb
+    image: nginxinc/nginx-unprivileged:1.30.6@sha256:ec0f7ecb1fbd84959ac114e65fb36074ffc97d4d51db0f18ee925162d889dcef
     networks:
       - edge
       - public
