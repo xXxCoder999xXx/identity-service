@@ -1,0 +1,121 @@
+# =============================================================================
+# Staging-Variante als Override auf compose.yaml (E-5-79).
+#
+# Aufruf (auf dem Server):
+#   docker compose -f compose.yaml -f compose.staging.yaml up -d
+#
+# Haertung, Limits, tmpfs, Netze und Pins erbt diese Datei aus compose.yaml;
+# hier steht nur, was auf Staging anders ist. Was Compose daraus
+# zusammenfuehrt, prueft scripts/test-staging-config.sh an der gerenderten
+# Konfiguration (E-5-91), nicht an dieser Datei.
+#
+# Merge-Regeln (E-5-86): Compose haengt Listen wie ports und volumes an die
+# Basis an. Deshalb ersetzt "!override" sie hier vollstaendig, und "!reset"
+# entfernt build. So steht jede Liste fuer Staging an genau einer Stelle,
+# nichts wird unsichtbar aus der lokalen Variante geerbt.
+#
+# Werte vom Server kommen nur als Umgebungsvariablen. Jede ist Pflicht
+# ("${VAR:?...}"): Fehlt eine, bricht Compose ab, statt mit leerem Wert zu
+# starten (fail closed). Keine davon ist ein Secret.
+#   API_IMAGE                 API-Image per Digest (ADR-010)
+#   LEGO_IMAGE                lego-Image per Digest (E-5-78)
+#   STAGING_SERVER_NAME_FILE  Datei mit "server_name ...;" (E-5-82, ADR-004)
+#   STAGING_CA_DIR            interne CA, die das API-Zertifikat prueft
+#   STAGING_API_CERT_DIR      Zertifikat und Schluessel der API
+# =============================================================================
+
+services:
+  nginx:
+    # Oeffentlich, nur IPv4 (E-5-73); Port 80 fuer HTTP-01 und die
+    # Weiterleitung, Port 443 fuer den Dienst (E-5-74).
+    ports: !override
+      - target: 8080
+        published: "80"
+        protocol: tcp
+        host_ip: 0.0.0.0
+      - target: 8443
+        published: "443"
+        protocol: tcp
+        host_ip: 0.0.0.0
+    volumes: !override
+      - type: bind
+        source: ./nginx.staging.conf
+        target: /etc/nginx/nginx.conf
+        read_only: true
+      - type: bind
+        source: ./nginx/snippets
+        target: /etc/nginx/snippets
+        read_only: true
+      - type: bind
+        source: ${STAGING_SERVER_NAME_FILE:?Pfad zur Datei mit server_name fehlt}
+        target: /etc/nginx/site/server_name.conf
+        read_only: true
+      - type: bind
+        source: ${STAGING_CA_DIR:?Ordner der internen CA fehlt}
+        target: /etc/nginx/ca
+        read_only: true
+      # Von lego geschrieben, von nginx nur gelesen (E-5-75).
+      - type: volume
+        source: tls-certificates
+        target: /etc/nginx/acme
+        read_only: true
+      - type: volume
+        source: acme-webroot
+        target: /var/www/acme
+        read_only: true
+
+  api:
+    # Staging baut nie selbst: dasselbe Image wie in CI und Production.
+    build: !reset null
+    image: ${API_IMAGE:?API-Image per Digest fehlt}
+    environment:
+      # Fest, nicht ueberschreibbar: Die Basis gibt Development vor, das
+      # Stacktraces an Clients zeigt (A10). Production ist der Modus, den die
+      # CI testet (E-5-87).
+      ASPNETCORE_ENVIRONMENT: Production
+    volumes: !override
+      - type: bind
+        source: ${STAGING_API_CERT_DIR:?Ordner mit Zertifikat der API fehlt}
+        target: /certs
+        read_only: true
+
+  # ACME-Client (ADR-014). Kein Dienst: Das Profil haelt ihn aus "up" heraus,
+  # der Timer startet ihn mit "docker compose ... run --rm lego ..." (E-5-76,
+  # E-5-88). Er steht nicht in der Basis und erbt deshalb nichts; die Haertung
+  # steht hier vollstaendig.
+  lego:
+    image: ${LEGO_IMAGE:?lego-Image per Digest fehlt}
+    profiles: ["acme"]
+    # Wie USER im Image; ausdruecklich, damit die UID nicht nur am Image haengt.
+    user: "101:101"
+    # Nur nach aussen (Let's Encrypt); kein Weg ins interne Netz edge.
+    networks:
+      - public
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    volumes:
+      - type: volume
+        source: lego-accounts
+        target: /data/accounts
+      - type: volume
+        source: tls-certificates
+        target: /data/certificates
+      - type: volume
+        source: acme-webroot
+        target: /webroot
+    mem_limit: 64m
+    cpus: 0.5
+    pids_limit: 64
+    # Einmaliger Lauf: Ein Neustart nach Fehler wuerde Let's Encrypt in
+    # Schleife anfragen (Rate Limits). Fehler meldet der Timer (ADR-013).
+    restart: "no"
+
+# Besitz und Rechte uebernehmen die Volumes beim ersten Einbinden aus dem
+# lego-Image (E-5-80).
+volumes:
+  lego-accounts:
+  tls-certificates:
+  acme-webroot:

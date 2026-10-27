@@ -89,7 +89,7 @@ jobs:
   # geprüft. Bewusst im selben Workflow und OHNE Pfadfilter: ein Job, der bei
   # Config-only-PRs nicht läuft, ist ein Gate mit Loch.
   # Bewusst nur Runner-Bordmittel (docker, docker compose, openssl, curl,
-  # pwsh): keine zusätzliche Action, also keine neue Abhängigkeit (6.2a).
+  # pwsh, jq): keine zusätzliche Action, also keine neue Abhängigkeit (6.2a).
   # Erbt die Baseline "contents: read" – der Job pusht nichts.
   # ---------------------------------------------------------------------------
   container:
@@ -141,6 +141,43 @@ jobs:
         # tmpfs – eine Quelle der Wahrheit. Hebt Dependabot den nginx-Pin an,
         # validiert dieser Schritt die Konfiguration gegen das neue Image.
         # --no-deps: der Dienst "api" wird hierfür nicht gestartet.
+
+      - name: Staging-Konfiguration prüfen (gerendert)
+        env: &staging-env
+          # Platzhalter für die Pflichtvariablen aus compose.staging.yaml. Die
+          # Prüfung braucht keine echten Werte: Digests aus Nullen, Pfade zu
+          # den Wegwerf-Zertifikaten des Laufs und einer Dummy-Datei.
+          API_IMAGE: ghcr.io/xxxcoder999xxx/identity-service@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          LEGO_IMAGE: ghcr.io/xxxcoder999xxx/identity-service-lego@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          STAGING_SERVER_NAME_FILE: ./ci-staging/server_name.conf
+          STAGING_CA_DIR: ./certs/ca
+          STAGING_API_CERT_DIR: ./certs/api
+        run: bash scripts/test-staging-config.sh
+        # Geprüft wird die von Compose zusammengeführte Konfiguration, nicht
+        # der Text der Dateien (E-5-91). Dasselbe Skript läuft später auf dem
+        # Server vor dem Start. Regeln und Exit-Codes stehen im Skriptkopf.
+
+      - name: nginx-Konfiguration Staging validieren (nginx -t)
+        env: *staging-env
+        run: |
+          set -euo pipefail
+          staging=(--file compose.yaml --file compose.staging.yaml)
+          mkdir -p ci-staging
+          printf 'server_name staging.example.invalid;\n' > ci-staging/server_name.conf
+          config="$(docker compose "${staging[@]}" config --format json)"
+          volume="$(jq --raw-output '.volumes["tls-certificates"].name' <<<"${config}")"
+          nginx_image="$(jq --raw-output '.services.nginx.image' <<<"${config}")"
+          docker volume create "${volume}"
+          docker run --rm --read-only --network none --cap-drop ALL \
+            --security-opt no-new-privileges:true --user 0:0 \
+            --volume "${PWD}/certs/edge:/src:ro" --volume "${volume}:/dst" \
+            --entrypoint /bin/cp "${nginx_image}" /src/edge.crt /src/edge.key /dst/
+          docker compose "${staging[@]}" run --rm --no-deps nginx nginx -t
+        # Auf Staging liest nginx das Zertifikat aus dem Volume, das lego
+        # füllt. Hier füllt es ein Kopier-Container mit dem Wegwerf-Zertifikat
+        # des Laufs; root nur in diesem Hilfsschritt, ohne Netz und ohne
+        # Capabilities (das neue Volume gehört root). Danach dieselbe Prüfung
+        # wie lokal: compose run mit exakt den Mounts aus der Staging-Variante.
 
       - name: Stack starten (Production-Modus)
         env:

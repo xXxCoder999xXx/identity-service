@@ -47,6 +47,9 @@ services:
         read_only: true
     mem_limit: 128m
     cpus: 0.5
+    # Obergrenze fuer Prozesse und Threads (Fork-Bombe, E-5-85). In der Basis,
+    # damit lokal, CI und Staging dieselbe Haertung haben (E-5-79).
+    pids_limit: 64
     restart: unless-stopped
     depends_on:
       api:
@@ -80,4 +83,6 @@ services:
         read_only: true
     mem_limit: 256m
     cpus: 1.0
+    # .NET zaehlt jeden Thread des Thread-Pools mit; daher mehr Luft als nginx.
+    pids_limit: 256
     restart: unless-stopped
