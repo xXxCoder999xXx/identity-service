@@ -167,16 +167,18 @@ jobs:
           config="$(docker compose "${staging[@]}" config --format json)"
           volume="$(jq --raw-output '.volumes["tls-certificates"].name' <<<"${config}")"
           nginx_image="$(jq --raw-output '.services.nginx.image' <<<"${config}")"
-          docker volume create "${volume}"
+          docker compose "${staging[@]}" run --rm --no-deps --entrypoint /bin/true nginx
           docker run --rm --read-only --network none --cap-drop ALL \
             --security-opt no-new-privileges:true --user 0:0 \
             --volume "${PWD}/certs/edge:/src:ro" --volume "${volume}:/dst" \
             --entrypoint /bin/cp "${nginx_image}" /src/edge.crt /src/edge.key /dst/
           docker compose "${staging[@]}" run --rm --no-deps nginx nginx -t
         # Auf Staging liest nginx das Zertifikat aus dem Volume, das lego
-        # füllt. Hier füllt es ein Kopier-Container mit dem Wegwerf-Zertifikat
-        # des Laufs; root nur in diesem Hilfsschritt, ohne Netz und ohne
-        # Capabilities (das neue Volume gehört root). Danach dieselbe Prüfung
+        # füllt. Hier legt Compose das Volume an (der Lauf mit /bin/true; ein
+        # von Hand angelegtes Volume quittiert Compose mit einer Warnung), und
+        # ein Kopier-Container füllt es mit dem Wegwerf-Zertifikat des Laufs;
+        # root nur in diesem Hilfsschritt, ohne Netz und ohne Capabilities
+        # (das neue Volume gehört root). Danach dieselbe Prüfung
         # wie lokal: compose run mit exakt den Mounts aus der Staging-Variante.
 
       - name: Stack starten (Production-Modus)
