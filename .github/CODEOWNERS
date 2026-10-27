@@ -39,7 +39,9 @@
 /.dockerignore              @xXxCoder999xXx
 /compose.yaml               @xXxCoder999xXx
 /compose.scan.yaml          @xXxCoder999xXx
+/compose.staging.yaml       @xXxCoder999xXx
 /nginx.conf                 @xXxCoder999xXx
+/nginx.staging.conf         @xXxCoder999xXx
 # Härtungs-Bausteine von nginx.conf (E-5-81): TLS, Header, Limits, Proxy.
 /nginx/                     @xXxCoder999xXx
 # Images von Drittanbietern (ADR-014): Basis-Pins, Prozess-UID, Mountpunkte
