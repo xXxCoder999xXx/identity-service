@@ -86,6 +86,7 @@ services:
   lego:
     image: ${LEGO_IMAGE:?lego-Image per Digest fehlt}
     profiles: ["acme"]
+    build: docker/lego
     # Wie USER im Image; ausdruecklich, damit die UID nicht nur am Image haengt.
     user: "101:101"
     # Nur nach aussen (Let's Encrypt); kein Weg ins interne Netz edge.
