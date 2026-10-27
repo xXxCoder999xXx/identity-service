@@ -208,6 +208,13 @@ und die Cooldown-Erkenntnis als Nachtrag zu ADR-005.
 - **lego-Gate rot** bis zu einem lego-Release mit Go ≥ 1.27.2 und `x/net` ≥
   0.60.0 (Stand 26.10.2026: v5.5.2 ist das neueste Release). Bei jedem roten
   Lauf prüfen, ob es noch dieselben Funde sind.
+- **Neuer Fund im Lauf von PR #113 (27.10.2026):** `GO-2026-6809` in `stdlib`
+  go1.27.1, Fix in Go 1.26.10 bzw. 1.27.3, Schwere **Unknown**. Das Gate
+  (`--fail-on high`, ADR-009) ignoriert Funde ohne bewertete Schwere, auch mit
+  Fix. Das Ergebnis bleibt Exit 4 durch die 15 bekannten High+-Funde. Für ein
+  lego-Image ohne bekannte Funde braucht es Go ≥ 1.27.3. Nachtrag zu ADR-009
+  prüfen: Umgang mit `Unknown` (z. B. in den Bericht heben oder befristet
+  beobachten).
 - Veröffentlichung des lego-Images über `publish.yml` (ADR-010-Muster) offen.
 - Länge der Cooldown weiter unbekannt; bekannt ist nur, dass sie Versionen
   und nicht Digests betrifft. Nachtrag zu ADR-005.
