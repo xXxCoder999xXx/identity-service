@@ -40,6 +40,11 @@ services:
         source: ./nginx.conf
         target: /etc/nginx/nginx.conf
         read_only: true
+      # Haertungs-Bausteine, die nginx.conf einbindet (E-5-81).
+      - type: bind
+        source: ./nginx/snippets
+        target: /etc/nginx/snippets
+        read_only: true
     mem_limit: 128m
     cpus: 0.5
     restart: unless-stopped
