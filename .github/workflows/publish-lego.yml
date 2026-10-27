@@ -1,0 +1,176 @@
+# =============================================================================
+# Veröffentlichung des lego-Images (Schritt 5, ADR-010, ADR-014, E-5-78)
+# .github/workflows/publish-lego.yml
+# Baut das lego-Image, prüft es (gehärteter Start, Image-Scan mit Profil
+# lego), legt es in der GitHub Container Registry ab und versieht es mit
+# Herkunftsnachweis und Stückliste. Ein Prüf-Gate verifiziert beides. Ein
+# Deploy findet hier NICHT statt.
+#
+# Warum ein eigener Workflow statt eines Jobs in publish.yml (E-5-78): Der
+# Herkunftsnachweis nennt den Workflow, der signiert hat. Mit einem Workflow
+# je Image prüft der Server Name UND Erbauer; ein Nachweis des API-Workflows
+# gilt nie für lego und umgekehrt. Die Gegenprobe "falscher Workflow" im
+# Prüfskript beweist das bei jedem Lauf. Rechte, Auslöser und Prüfregeln sind
+# dieselben wie in publish.yml; die Prüfung steht nur einmal, in
+# scripts/verify-attestations.sh.
+#
+# Action-Pins am 2026-10-27 gegen die offiziellen Repositories aufgelöst
+# (git ls-remote); identisch mit publish.yml.
+#
+# Dieser Workflow läuft nicht bei Pull Requests: Er ist kein Status-Check im
+# Ruleset. Fehler zeigen sich erst nach dem Merge; ein fehlerhaftes Image
+# gelangt wegen der Schrittfolge trotzdem nicht in die Registry. Solange das
+# Gate für lego rot ist (ADR-014), endet jeder Lauf beim Scan, und es wird
+# nichts veröffentlicht. Das ist korrektes Verhalten, keine Störung (E-5-61).
+# =============================================================================
+name: Publish lego
+
+on:
+  push:
+    branches: [main]      # NUR main. Nie pull_request, nie workflow_dispatch:
+                          # Der Job hat Schreibrechte und darf nicht von einem
+                          # beliebigen Branch aus startbar sein.
+    paths:
+      # Nur, wenn sich das Image oder seine Regeln ändern. Dependabot-Updates
+      # der beiden Pins ändern das Dockerfile und lösen damit ebenfalls aus.
+      # Ohne Filter wäre jeder Merge rot, solange das Gate rot ist – und an
+      # Dauerrot gewöhnt man sich.
+      - "docker/lego/**"
+      - ".github/workflows/publish-lego.yml"
+      - "scripts/invoke-image-scan.sh"
+      - "scripts/verify-attestations.sh"
+
+# Baseline wie in ci.yml: alles Nichtgenannte fällt auf "none".
+permissions:
+  contents: read
+
+# Veröffentlichungen laufen nacheinander und werden nie abgebrochen: Ein Lauf,
+# der zwischen Hochladen und Nachweis stirbt, hinterließe ein Image ohne
+# Nachweis. Eigene Gruppe je Workflow: lego wartet nicht auf die API.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  publish-lego:
+    name: lego-Image veröffentlichen
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    # Ein Job-Block ERSETZT die Baseline: contents: read wird wiederholt.
+    # Dieselben vier Rechte wie in publish.yml (Begründung dort, ADR-010).
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+
+    env:
+      # Name in der Registry: kleingeschrieben und OHNE Tag.
+      IMAGE_NAME: ghcr.io/xxxcoder999xxx/identity-service-lego
+      LOCAL_IMAGE: identity-service-lego:publish
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false  # Begründung siehe ci.yml, Job "Build & Test"
+
+      # --- 1. Bauen: genau EIN Image für alle folgenden Schritte -------------
+      - name: Image bauen (einmal, ohne Cache)
+        run: docker build --pull --tag "${LOCAL_IMAGE}" docker/lego
+        # Frischer Runner, kein Build-Cache. Beide Basis-Images per Digest
+        # gepinnt; --pull holt sie nachweislich aus der Registry.
+
+      # --- 2. Prüfen: bis hierher schreibt der Lauf nichts nach außen --------
+      - name: Gehärteter Start (Version, keine Shell)
+        run: |
+          set -euo pipefail
+          # Eine Quelle der Wahrheit: die Version aus der FROM-Zeile.
+          expected="$(sed --quiet --regexp-extended \
+            's/^FROM goacme\/lego:v([^@]+)@sha256:.*/\1/p' docker/lego/Dockerfile)"
+          if [ -z "${expected}" ]; then
+            echo "::error::Keine lego-Version im Dockerfile gefunden."
+            exit 1
+          fi
+          hardened=(--rm --read-only --cap-drop ALL
+            --security-opt no-new-privileges:true --user 101:101)
+          actual="$(docker run "${hardened[@]}" "${LOCAL_IMAGE}" --version)"
+          echo "erwartet=${expected} gemeldet=${actual}"
+          case "${actual}" in
+            "lego version ${expected} "*) ;;
+            *) echo "::error::lego meldet nicht Version ${expected}."; exit 1 ;;
+          esac
+          code=0
+          docker run "${hardened[@]}" --entrypoint /bin/sh "${LOCAL_IMAGE}" -c true || code=$?
+          if [ "${code}" -ne 127 ]; then
+            echo "::error::Gegenprobe Shell: Exit ${code}, erwartet 127 (Programm nicht gefunden)."
+            exit 1
+          fi
+          echo "Gegenprobe bestanden: keine Shell im Image (Exit 127)."
+        # Ersatz für den Smoke-Test der API: lego ist kein Dienst, sondern ein
+        # Programm. Gestartet wie später auf dem Server (UID 101, E-5-75),
+        # schreibgeschützt und ohne Capabilities. Die Gegenprobe akzeptiert
+        # genau Exit 127, damit ein Fehler des Daemons (125) nicht als Beweis
+        # durchgeht.
+
+      - name: Image scannen (Bericht, Blindheits-Schutz, Gate)
+        run: bash scripts/invoke-image-scan.sh "${LOCAL_IMAGE}" lego
+        # Dasselbe Skript, Profil und derselbe Schwellenwert wie im Job
+        # "Image-Scan Drittanbieter" in ci.yml. Nebenprodukt: die Stückliste
+        # scan/out/sbom.cdx.json (CycloneDX).
+
+      # --- 3. Veröffentlichen ------------------------------------------------
+      - name: An der Registry anmelden
+        env:
+          REGISTRY_TOKEN: ${{ github.token }}
+        run: printf '%s' "${REGISTRY_TOKEN}" | docker login ghcr.io --username "${GITHUB_ACTOR}" --password-stdin
+        # Begründung siehe publish.yml.
+
+      - name: Image hochladen (Tag = Commit, nie latest)
+        id: push
+        run: |
+          set -euo pipefail
+          ref="${IMAGE_NAME}:${GITHUB_SHA}"
+          docker tag "${LOCAL_IMAGE}" "${ref}"
+          docker push "${ref}"
+          digest="$(docker image inspect "${ref}" \
+            --format '{{range .RepoDigests}}{{println .}}{{end}}' \
+            | grep --max-count 1 "^${IMAGE_NAME}@sha256:" | cut --delimiter @ --fields 2)"
+          case "${digest}" in
+            sha256:*) ;;
+            *) echo "::error::Kein Digest für das hochgeladene Image ermittelt."; exit 1 ;;
+          esac
+          if [ "${#digest}" -ne 71 ]; then
+            echo "::error::Digest hat nicht die erwartete Länge: '${digest}'"
+            exit 1
+          fi
+          echo "Veröffentlicht: ${IMAGE_NAME}@${digest}"
+          echo "digest=${digest}" >> "${GITHUB_OUTPUT}"
+
+      # --- 4. Nachweise ------------------------------------------------------
+      - name: Herkunftsnachweis ausstellen
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+          create-storage-record: false
+
+      - name: Stückliste als Nachweis ausstellen
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          sbom-path: scan/out/sbom.cdx.json
+          push-to-registry: true
+          create-storage-record: false
+
+      # --- 5. Prüf-Gate ------------------------------------------------------
+      - name: Nachweise verifizieren (mit Gegenprobe)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: bash scripts/verify-attestations.sh "${IMAGE_NAME}" "${DIGEST}" publish-lego.yml publish.yml
+        # Gegenprobe "falscher Workflow" mit publish.yml: Ein Nachweis für
+        # lego darf nur von diesem Workflow stammen (E-5-78).
