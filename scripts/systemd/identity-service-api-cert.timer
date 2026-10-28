@@ -1,0 +1,16 @@
+# Taeglicher Lauf von identity-service-api-cert.service (E-5-97).
+# Ablageort: /etc/systemd/system, root:root, 0644.
+#
+# RandomizedDelaySec: Start zufaellig innerhalb einer Stunde nach Mitternacht.
+# Persistent: Ein verpasster Lauf (Server aus) wird nach dem Start nachgeholt.
+# Healthchecks.io: Periode 1 Tag, Grace 3 Stunden (Versatz plus Puffer).
+[Unit]
+Description=Taeglich: Zertifikat der API fuer Staging pruefen (E-5-97)
+
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=1h
+Persistent=true
+
+[Install]
+WantedBy=timers.target
