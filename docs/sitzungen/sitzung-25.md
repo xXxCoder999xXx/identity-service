@@ -66,7 +66,7 @@ vollständige Konzept steht als Roadmap-Punkt 1 unten.
 
 ### 1.4 Lehrstoff
 
-- [Lehrstoff: Neutraler CA-Dateiname und Konzept der Staging-CA](https://claude.ai/artifact/FKUgBLSWgc6ThahxMiuZq9)
+- [Lehrstoff: Interne CA für nginx → API](https://claude.ai/artifact/7G3DfYhQEoiyeEX7KMNEj7)
   (zwei TLS-Strecken, gekoppelte Umbenennung und stille Falle, Ort von CA und
   Schlüssel, UID-Abbildung unter rootless Docker, `pathlen`/`nameConstraints`,
   Erneuerung mit Diagramm, Fehler der Sitzung, Spickzettel)
@@ -380,7 +380,7 @@ seit Bericht 22.
   handelt nur bei Bedarf; jeder erfolgreiche Lauf pingt. Nicht der Fehler löst
   den Alarm aus, sondern das Ausbleiben des Pings.
 - Lehrstoff zu dieser Sitzung:
-  [Lehrstoff: Neutraler CA-Dateiname und Konzept der Staging-CA](https://claude.ai/artifact/FKUgBLSWgc6ThahxMiuZq9)
+  [Lehrstoff: Interne CA für nginx → API](https://claude.ai/artifact/7G3DfYhQEoiyeEX7KMNEj7)
 
 ## 8. Optionale Vorbereitung
 
