@@ -27,7 +27,7 @@ set -euo pipefail
 
 out="${1:-certs}"
 
-if [ -e "${out}/ca/local-dev-ca.crt" ] || [ -e "${out}/ca/local-dev-ca.key" ]; then
+if [ -e "${out}/ca/internal-ca.crt" ] || [ -e "${out}/ca/internal-ca.key" ]; then
   echo "Abbruch: In '${out}/ca' liegt bereits eine CA. Dieses Skript ueberschreibt keine bestehenden Zertifikate." >&2
   exit 1
 fi
@@ -35,11 +35,11 @@ fi
 mkdir -p "${out}/ca" "${out}/edge" "${out}/api"
 
 # --- CA: nur fuer diesen Lauf, signiert die beiden Server-Zertifikate ---
-openssl ecparam -name prime256v1 -genkey -noout -out "${out}/ca/local-dev-ca.key"
+openssl ecparam -name prime256v1 -genkey -noout -out "${out}/ca/internal-ca.key"
 openssl req -x509 -new -sha256 -days 1 \
-  -key "${out}/ca/local-dev-ca.key" \
+  -key "${out}/ca/internal-ca.key" \
   -subj "/CN=ci-throwaway-ca" \
-  -out "${out}/ca/local-dev-ca.crt"
+  -out "${out}/ca/internal-ca.crt"
 
 # --- edge: nginx, vom Smoke-Test ueber localhost adressiert ---
 openssl ecparam -name prime256v1 -genkey -noout -out "${out}/edge/edge.key"
@@ -50,8 +50,8 @@ openssl req -new \
 printf 'subjectAltName=DNS:localhost,IP:127.0.0.1\n' > "${out}/edge/edge.ext"
 openssl x509 -req -sha256 -days 1 \
   -in "${out}/edge/edge.csr" \
-  -CA "${out}/ca/local-dev-ca.crt" \
-  -CAkey "${out}/ca/local-dev-ca.key" \
+  -CA "${out}/ca/internal-ca.crt" \
+  -CAkey "${out}/ca/internal-ca.key" \
   -CAcreateserial \
   -extfile "${out}/edge/edge.ext" \
   -out "${out}/edge/edge.crt"
@@ -65,15 +65,15 @@ openssl req -new \
 printf 'subjectAltName=DNS:api,DNS:localhost\n' > "${out}/api/api.ext"
 openssl x509 -req -sha256 -days 1 \
   -in "${out}/api/api.csr" \
-  -CA "${out}/ca/local-dev-ca.crt" \
-  -CAkey "${out}/ca/local-dev-ca.key" \
+  -CA "${out}/ca/internal-ca.crt" \
+  -CAkey "${out}/ca/internal-ca.key" \
   -CAcreateserial \
   -extfile "${out}/api/api.ext" \
   -out "${out}/api/api.crt"
 
 # Der CA-Schluessel wird nach dem letzten Signieren geloescht: Danach kann
 # niemand im Lauf weitere Zertifikate ausstellen. Zwischenprodukte ebenso.
-rm "${out}/ca/local-dev-ca.key" \
+rm "${out}/ca/internal-ca.key" \
   "${out}/edge/edge.csr" "${out}/edge/edge.ext" \
   "${out}/api/api.csr" "${out}/api/api.ext"
 

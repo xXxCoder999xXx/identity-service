@@ -98,7 +98,7 @@ jobs:
 
       - name: Smoke-Test (Health, Security-Header, Netzgrenze)
         shell: pwsh
-        run: ./scripts/Test-Stack.ps1 -CaFile certs/ca/local-dev-ca.crt
+        run: ./scripts/Test-Stack.ps1 -CaFile certs/ca/internal-ca.crt
 
       - name: Container-Logs (nur bei Fehlschlag)
         if: failure()
