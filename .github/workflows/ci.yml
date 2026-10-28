@@ -199,7 +199,7 @@ jobs:
 
       - name: Smoke-Test (Health, Security-Header, Netzgrenze)
         shell: pwsh
-        run: ./scripts/Test-Stack.ps1 -CaFile certs/ca/local-dev-ca.crt
+        run: ./scripts/Test-Stack.ps1 -CaFile certs/ca/internal-ca.crt
         # Dasselbe Skript wie lokal: lokales Urteil == CI-Urteil. Grün ist nicht
         # gleich funktionierend – geprüft wird mit echten Anfragen durch die
         # ganze Kette, die Zertifikatskette gegen die Wegwerf-CA des Laufs.

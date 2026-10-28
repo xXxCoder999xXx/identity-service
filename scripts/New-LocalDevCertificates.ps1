@@ -296,9 +296,30 @@ Write-Step 'Schutz-.gitignore geschrieben'
 $caDirectory = Join-Path $OutputRoot 'ca'
 $null = New-Item -ItemType Directory -Path $caDirectory -Force
 
-$caKeyPath = Join-Path $caDirectory 'local-dev-ca.key'
-$caCrtPath = Join-Path $caDirectory 'local-dev-ca.crt'
-$caCnfPath = Join-Path $caDirectory 'local-dev-ca.cnf'
+$caKeyPath = Join-Path $caDirectory 'internal-ca.key'
+$caCrtPath = Join-Path $caDirectory 'internal-ca.crt'
+$caCnfPath = Join-Path $caDirectory 'internal-ca.cnf'
+
+# Frueher hiessen die CA-Dateien local-dev-ca.*. Laege eine alte CA unerkannt im
+# Ordner, wuerde das Skript still eine zweite erzeugen, und die alte bliebe im
+# Trust Store vertrauenswuerdig, ohne dass sie noch jemand braucht. Melden statt
+# reparieren: Abbruch, die Entscheidung trifft der Mensch.
+$legacyCaFiles = @('local-dev-ca.key', 'local-dev-ca.crt', 'local-dev-ca.cnf') |
+    ForEach-Object { Join-Path $caDirectory $_ } |
+    Where-Object { Test-Path -LiteralPath $_ }
+
+if ($legacyCaFiles) {
+    throw @"
+In '$caDirectory' liegen CA-Dateien mit dem alten Namen local-dev-ca.*.
+
+Weiterverwenden (empfohlen, der Trust-Store-Eintrag bleibt gueltig):
+  die Dateien in internal-ca.key, internal-ca.crt und internal-ca.cnf umbenennen.
+
+Neu beginnen:
+  die alten Dateien loeschen, den alten Eintrag aus Cert:\CurrentUser\Root
+  entfernen und das Skript erneut ausfuehren.
+"@
+}
 
 # ---------------------------------------------------------------------------
 # Schritt 1 - Certificate Authority
