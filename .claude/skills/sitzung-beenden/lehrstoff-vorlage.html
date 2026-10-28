@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<!--
+  Vorlage fuer den Lehrstoff einer Sitzung (Skill sitzung-beenden, Schritt 3).
+
+  Verbindlich: :root-Tokens, Schriften, Bausteine und ihre Bedeutung.
+  Erlaubt: Bausteine weglassen, wiederholen, umordnen; neue Bausteine, wenn sie
+  aus denselben Tokens gebaut sind und das Design weiterentwickeln.
+  Nicht erlaubt: externe Schriften, Skripte oder Bilder (Datenschutz, keine
+  Laufzeit-Abhaengigkeit). Alles steht in dieser einen Datei.
+
+  Platzhalter in GROSSBUCHSTABEN ersetzen. Beispielinhalte sind markiert und
+  werden durch echten Sitzungsinhalt ersetzt.
+-->
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>TITEL DER SEITE</title>
+<style>
+/* Layout: eine Lesespalte wie ein Laborprotokoll; Messwerte als Tabellen,
+   Befehle als Mono-Bloecke, Merke-Kaesten als einzige farbige Flaechen. */
+:root {
+  --bg: #f6f7f9; --surface: #ffffff; --fg: #1d2430; --muted: #5b6577;
+  --line: #d9dee6; --accent: #2c5d8a; --accent-tint: #e6eef6;
+  --ok: #1f7a4d; --bad: #b3361f; --code: #eef1f5;
+  --display: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  --body: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  --mono: "Cascadia Mono", Consolas, ui-monospace, "SF Mono", Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #12161d; --surface: #1a2029; --fg: #e3e7ee; --muted: #9aa4b5;
+  --line: #2c3442; --accent: #7fb0de; --accent-tint: #1c2a3a;
+  --ok: #5cc08e; --bad: #f08a72; --code: #202733; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #12161d; --surface: #1a2029; --fg: #e3e7ee; --muted: #9aa4b5;
+  --line: #2c3442; --accent: #7fb0de; --accent-tint: #1c2a3a;
+  --ok: #5cc08e; --bad: #f08a72; --code: #202733; color-scheme: dark; }
+
+*, *::before, *::after { box-sizing: border-box; }
+html { scroll-padding-top: 1rem; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.6 var(--body); }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+
+.wrap { max-width: 46rem; margin: 0 auto; padding-block: 2.5rem 4rem;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; gap: 2.5rem; }
+
+/* Kopf: Eyebrow = Projekt, Sitzung, PRs; Lead = worum es geht, in zwei Saetzen */
+header { display: grid; gap: .6rem; }
+.eyebrow { font: 600 .75rem/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+h1 { font: 600 2.2rem/1.15 var(--display); margin: 0; text-wrap: balance; }
+h2 { font: 600 1.4rem/1.25 var(--display); margin: 0; text-wrap: balance; }
+h3 { font: 600 1rem/1.3 var(--body); margin: 0; }
+p { margin: 0; }
+.lead { color: var(--muted); font-size: 1.05rem; }
+.meta { display: flex; flex-wrap: wrap; gap: .4rem 1.2rem; font: .8rem/1.4 var(--mono); color: var(--muted); }
+section { display: grid; gap: .9rem; }
+a { color: var(--accent); text-underline-offset: 2px; }
+a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+
+/* Inhaltsverzeichnis: nummeriert wie die Abschnitte, Sprung per #name */
+nav.toc { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 1rem 1.2rem; }
+nav.toc h2 { font: 600 .75rem/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: .6rem; }
+nav.toc ol { margin: 0; padding-left: 1.4rem; display: grid; gap: .25rem; }
+
+code { font: .9em var(--mono); background: var(--code); padding: .1em .35em; border-radius: 3px; }
+pre { font: .85rem/1.55 var(--mono); background: var(--code); padding: .9rem 1rem; margin: 0; overflow-x: auto; border-radius: 4px; }
+pre code { background: none; padding: 0; }
+
+/* Tabellen: Soll/Ist, Optionen, Messungen. .ok/.bad nur fuer gemessene Ergebnisse */
+.tbl { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: .92rem; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: .45rem .6rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font: 600 .75rem/1.3 var(--mono); letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+td.mono { font-family: var(--mono); font-size: .85rem; white-space: nowrap; }
+.ok { color: var(--ok); font-weight: 600; } .bad { color: var(--bad); font-weight: 600; }
+tr.chosen td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+
+/* Hinweis: Randlinie; Merke: die eine farbige Flaeche je Abschnitt */
+.note { border-left: 3px solid var(--accent); padding: .2rem 0 .2rem 1rem; }
+.merke { background: var(--accent-tint); border-radius: 6px; padding: .8rem 1rem; display: grid; gap: .25rem; }
+.merke .tag { color: var(--accent); }
+
+/* Gegenueberstellung: zwei bis drei Spalten, bricht am Telefon um */
+.pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 1rem; }
+.pair > div { min-width: 0; display: grid; gap: .5rem; align-content: start;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: .9rem 1rem; }
+.tag { font: 600 .72rem/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; }
+.chip { display: inline-block; font: 600 .68rem/1 var(--mono); letter-spacing: .06em; text-transform: uppercase;
+  padding: .25rem .45rem; border-radius: 3px; border: 1px solid var(--accent); color: var(--accent); }
+
+ul, ol { margin: 0; padding-left: 1.2rem; display: grid; gap: .35rem; }
+
+/* Begriffs- und Fallenliste */
+dl { margin: 0; display: grid; grid-template-columns: minmax(9rem, max-content) 1fr; gap: .45rem 1rem; }
+dt { font: .85rem var(--mono); color: var(--accent); } dd { margin: 0; min-width: 0; }
+@media (max-width: 30rem) { dl { grid-template-columns: 1fr; } dd { margin-bottom: .4rem; } }
+
+/* Diagramm: Inline-SVG, Farben nur ueber die Klassen unten */
+figure { margin: 0; display: grid; gap: .5rem; }
+figure .svg { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: .6rem; }
+figure svg { display: block; width: 100%; min-width: 34rem; height: auto; font-family: var(--body); }
+figcaption { font-size: .85rem; color: var(--muted); }
+svg .box { fill: none; stroke: var(--muted); stroke-width: 1.25; }
+svg .box-accent { fill: var(--accent-tint); stroke: var(--accent); stroke-width: 2; }
+svg .edge { fill: none; stroke: var(--muted); stroke-width: 1.25; }
+svg .t { fill: var(--fg); font-size: 13px; }
+svg .t-strong { fill: var(--fg); font-size: 13px; font-weight: 600; }
+svg .t-quiet { fill: var(--muted); font-size: 11.5px; }
+svg .arrowhead { fill: var(--muted); }
+
+footer { color: var(--muted); font-size: .85rem; border-top: 1px solid var(--line); padding-top: 1rem; display: grid; gap: .3rem; }
+
+@media print {
+  :root { --bg: #fff; --surface: #fff; --code: #f3f3f3; color-scheme: light; }
+  .wrap { max-width: none; padding: 0; gap: 1.5rem; }
+  nav.toc { display: none; }
+  section, figure, table { break-inside: avoid; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <span class="eyebrow">IdentityService · Sitzung NN · PR #NNN</span>
+  <h1>THEMA DER SITZUNG</h1>
+  <p class="lead">ZWEI SAETZE: WAS WURDE GEBAUT ODER ENTSCHIEDEN, UND WAS LERNT MAN HIER.</p>
+  <div class="meta"><span>TT.MM.JJJJ</span><span>Phase: PHASE UND SCHRITT</span><span>Entscheidungen: E-X-N bis E-X-M</span></div>
+</header>
+
+<nav class="toc" aria-label="Inhalt">
+  <h2>Inhalt</h2>
+  <ol>
+    <li><a href="#ziel">ABSCHNITT 1</a></li>
+    <li><a href="#optionen">ABSCHNITT 2</a></li>
+    <li><a href="#ablauf">ABSCHNITT 3</a></li>
+    <li><a href="#fallen">Fallen aus dieser Sitzung</a></li>
+    <li><a href="#spickzettel">Merksätze und Spickzettel</a></li>
+  </ol>
+</nav>
+
+<!-- Baustein: Konzept mit Soll/Ist-Tabelle und Merke -->
+<section id="ziel">
+  <h2>1. ABSCHNITTSTITEL ALS AUSSAGE</h2>
+  <p>WARUM UND FUNKTIONSWEISE, KURZE SAETZE.</p>
+  <div class="tbl"><table>
+    <tr><th>Messung</th><th>Soll</th><th>Ist</th></tr>
+    <tr><td>BEISPIEL</td><td class="mono">WERT</td><td class="mono ok">WERT</td></tr>
+    <tr><td>BEISPIEL</td><td class="mono">WERT</td><td class="mono bad">WERT</td></tr>
+  </table></div>
+  <div class="merke"><span class="tag">Merke</span><p>EIN SATZ, DER OHNE KONTEXT TRAEGT.</p></div>
+</section>
+
+<!-- Baustein: Optionen mit Trade-offs; gewaehlte Zeile mit class="chosen" und Chip -->
+<section id="optionen">
+  <h2>2. OPTIONEN UND ENTSCHEIDUNG</h2>
+  <div class="tbl"><table>
+    <tr><th>Option</th><th>Vorteil</th><th>Nachteil</th></tr>
+    <tr class="chosen"><td>A <span class="chip">gewählt</span></td><td>…</td><td>…</td></tr>
+    <tr><td>B</td><td>…</td><td>…</td></tr>
+  </table></div>
+  <div class="pair">
+    <div><span class="tag bad">Überraschung 1</span><p>…</p></div>
+    <div><span class="tag ok">Lösung</span><p>…</p></div>
+  </div>
+  <p class="note">HINWEIS, DER AUS DEM FLIESSTEXT HERAUSRAGEN SOLL.</p>
+</section>
+
+<!-- Baustein: Diagramm fuer Ablaeufe mit Verzweigung. Breite 720, Farben nur ueber Klassen -->
+<section id="ablauf">
+  <h2>3. ABLAUF ALS DIAGRAMM</h2>
+  <figure>
+    <div class="svg">
+      <svg viewBox="0 0 720 150" role="img" aria-label="BESCHREIBUNG DES DIAGRAMMS">
+        <defs><marker id="pfeil" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path class="arrowhead" d="M0 0L10 5L0 10z"/></marker></defs>
+        <rect class="box" x="20" y="50" width="180" height="48" rx="8"/>
+        <text class="t" x="110" y="78" text-anchor="middle">SCHRITT 1</text>
+        <path class="edge" d="M200 74H260" marker-end="url(#pfeil)"/>
+        <rect class="box" x="260" y="50" width="180" height="48" rx="8"/>
+        <text class="t" x="350" y="78" text-anchor="middle">SCHRITT 2</text>
+        <path class="edge" d="M440 74H500" marker-end="url(#pfeil)"/>
+        <rect class="box-accent" x="500" y="50" width="200" height="48" rx="8"/>
+        <text class="t-strong" x="600" y="78" text-anchor="middle">ERGEBNIS</text>
+        <text class="t-quiet" x="230" y="64" text-anchor="middle">Bedingung</text>
+      </svg>
+    </div>
+    <figcaption>EIN SATZ, WIE MAN DAS DIAGRAMM LIEST.</figcaption>
+  </figure>
+</section>
+
+<!-- Baustein: echte Fehler der Sitzung -->
+<section id="fallen">
+  <h2>4. Fallen aus dieser Sitzung</h2>
+  <dl>
+    <dt>STICHWORT</dt><dd>WAS GESCHAH, WARUM, WIE MAN ES VERMEIDET.</dd>
+  </dl>
+</section>
+
+<!-- Baustein: Merksaetze und Spickzettel, Platzhalter in Grossbuchstaben -->
+<section id="spickzettel">
+  <h2>5. Merksätze und Spickzettel</h2>
+  <ul>
+    <li>MERKSATZ.</li>
+  </ul>
+<pre><code>BEFEHL MIT PLATZHALTER</code></pre>
+</section>
+
+<footer>
+  <span>Quelle: <code>docs/sitzungen/sitzung-NN.md</code> · Stand TT.MM.JJJJ</span>
+  <span>QUELLEN MIT LINKS, FALLS RECHERCHIERT.</span>
+</footer>
+
+</div>
+</body>
+</html>
