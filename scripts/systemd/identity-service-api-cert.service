@@ -1,0 +1,35 @@
+# Prueft und erneuert das Zertifikat der API fuer Staging (E-5-97).
+# Ablageort: /etc/systemd/system, root:root, 0644. Gestartet von
+# identity-service-api-cert.timer.
+#
+# Die Ping-URL liegt in /etc/credstore (0600, root) und kommt nur zur
+# Laufzeit per LoadCredential; fehlt sie, startet systemd den Dienst nicht
+# (243/CREDENTIALS), die Stille alarmiert (ADR-013, E-5-55).
+#
+# Sandbox: Das ganze Dateisystem ist schreibgeschuetzt ausser dem Ordner der
+# API-Zertifikate. Der CA-Schluessel ist hier nur lesbar; eine Erneuerung
+# kann die CA nicht veraendern. Rechte nur fuer chown/chmod auf den Schluessel
+# der API und zum Lesen des vorhandenen Schluessels (gehoert der API-UID).
+# Der spaetere API-Neustart (Pull-Deploy) braucht vermutlich mehr Rechte; die
+# Sandbox wird dann gezielt erweitert, nicht vorab.
+[Unit]
+Description=Zertifikat der API fuer Staging pruefen und erneuern (E-5-97)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/renew-api-certificate.sh /etc/identity-service/ca-private /etc/identity-service/ca /etc/identity-service/api-tls 167189
+LoadCredential=ping-url:/etc/credstore/identity-service-api-cert.ping-url
+TimeoutStartSec=2min
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/etc/identity-service/api-tls
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+CapabilityBoundingSet=CAP_CHOWN CAP_FOWNER CAP_DAC_OVERRIDE
