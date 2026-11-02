@@ -11,7 +11,7 @@
 # Bewusst KEINE "# syntax="-Zeile (Begruendung im Dockerfile der API).
 
 # ---- Quelle der Programmdatei und der Mountpunkte ----
-FROM goacme/lego:v5.5.2@sha256:1944e8c36055beec47c7de6f15202b41128be75eea0ffa257f0c14d93c5155fd AS lego
+FROM goacme/lego:v5.6.0@sha256:6f1583fc026a455ea46a7a5858c576105bb69c2e2de69db391cab7f14750350c AS lego
 
 # Mountpunkte fuer die Volumes (E-5-80). Das Laufzeit-Image hat keine Shell,
 # deshalb entstehen Besitz und Rechte vollstaendig hier und werden unten
