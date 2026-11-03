@@ -89,8 +89,15 @@ attest_verify_ok "Herkunftsnachweis (aus der Registry geladen)" "${ATTEST_PROVEN
 attest_verify_ok "Stueckliste" "${ATTEST_SBOM}"
 
 attest_find_foreign_image .
-attest_reject_foreign_image
-attest_reject_wrong_workflow
-attest_reject_wrong_branch
+
+# Gegenproben ueber beide Quellen. Der Server laedt Nachweise nur aus der
+# Registry (E-5-116); die Gegenproben ueber "oci" belegen bei jedem Lauf mit
+# dem echten gh und der echten Registry, dass die erwarteten Gruende dafuer
+# stimmen. Kontrollpaarung je Quelle: die beiden Herkunftsnachweise oben.
+for source in api oci; do
+  attest_reject_foreign_image "${source}"
+  attest_reject_wrong_workflow "${source}"
+  attest_reject_wrong_branch "${source}"
+done
 
 echo "Pruef-Gate bestanden: ${ATTEST_SUBJECT}"
