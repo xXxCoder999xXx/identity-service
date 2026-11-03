@@ -32,12 +32,23 @@ readonly ATTEST_PROVENANCE="https://slsa.dev/provenance/v1"
 readonly ATTEST_SBOM="https://cyclonedx.org/bom"
 
 # Was im verifizierten Nachweis stehen muss (eine Zeile je Nachweis).
+# Die beiden letzten Spalten sind die festen Kennungen von Repository und
+# Besitzer (Fulcio-OIDs 1.3.6.1.4.1.57264.1.15 und .17, E-5-121). Namen
+# lassen sich umbenennen und neu vergeben, Kennungen nicht. gh vergleicht
+# beim Laden aus der Registry (--bundle-from-oci) nur den Namen; laut
+# Hilfetext von gh 2.103.3 erkennt es dort weder Umbenennung noch
+# Neuvergabe. Deshalb prueft die Bibliothek die Kennungen selbst. Fehlt ein
+# Feld im Zertifikat, bleibt die Spalte leer und der Vergleich scheitert
+# (fail closed). Feldnamen aus sigstore-go v1.3.0 (von gh 2.102.0 und
+# 2.103.3 verwendet), Werte am 2026-11-03 an unserem Nachweis gemessen.
 readonly ATTEST_FACTS='.[] | .verificationResult
   | [ .statement.predicateType,
       .signature.certificate.sourceRepositoryURI,
       .signature.certificate.sourceRepositoryRef,
       .signature.certificate.buildSignerURI,
-      .signature.certificate.runnerEnvironment ]
+      .signature.certificate.runnerEnvironment,
+      .signature.certificate.sourceRepositoryIdentifier,
+      .signature.certificate.sourceRepositoryOwnerIdentifier ]
   | @tsv'
 
 # Prueft die Eingaben und legt die abgeleiteten Werte fest.
@@ -47,6 +58,8 @@ readonly ATTEST_FACTS='.[] | .verificationResult
 # $4 DIGEST          sha256:... des Images
 # $5 WORKFLOW        Dateiname des Workflows, der signiert haben MUSS
 # $6 WRONG_WORKFLOW  Dateiname eines anderen Workflows (Gegenprobe)
+# $7 REPO_ID         feste Kennung des Repositorys (Zahl)
+# $8 OWNER_ID        feste Kennung des Besitzers (Zahl)
 attest_init() {
   local fn
   # Fail closed: Ohne die Funktionen des Einstiegs koennte ein Fehler nicht
@@ -58,9 +71,9 @@ attest_init() {
     fi
   done
 
-  [ "$#" -eq 6 ] || attest_fail 2 "attest_init erwartet 6 Parameter (erhalten: $#)."
+  [ "$#" -eq 8 ] || attest_fail 2 "attest_init erwartet 8 Parameter (erhalten: $#)."
   local repo="$1" server_url="$2" image_name="$3" digest="$4"
-  local workflow_file="$5" wrong_workflow_file="$6"
+  local workflow_file="$5" wrong_workflow_file="$6" repo_id="$7" owner_id="$8"
 
   [ -n "${repo}" ] || attest_fail 2 "Repository ist leer."
   [ -n "${server_url}" ] || attest_fail 2 "Server-URL ist leer."
@@ -73,6 +86,10 @@ attest_init() {
   esac
   [ "${#digest}" -eq 71 ] || attest_fail 2 "DIGEST hat nicht die erwartete Laenge: '${digest}'."
   [ "${workflow_file}" != "${wrong_workflow_file}" ] || attest_fail 2 "WORKFLOW und WRONG_WORKFLOW sind gleich; die Gegenprobe waere wertlos."
+  # Nur Ziffern ohne fuehrende Null: Eine leere oder anders geschriebene
+  # Kennung koennte sonst mit einer leeren Spalte uebereinstimmen.
+  [[ "${repo_id}" =~ ^[1-9][0-9]*$ ]] || attest_fail 2 "REPO_ID '${repo_id}' ist keine Kennung."
+  [[ "${owner_id}" =~ ^[1-9][0-9]*$ ]] || attest_fail 2 "OWNER_ID '${owner_id}' ist keine Kennung."
 
   readonly ATTEST_REPO="${repo}"
   readonly ATTEST_SUBJECT="oci://${image_name}@${digest}"
@@ -81,6 +98,8 @@ attest_init() {
   readonly ATTEST_WRONG_WORKFLOW="${repo}/.github/workflows/${wrong_workflow_file}"
   readonly ATTEST_EXPECTED_REPO="${server_url}/${repo}"
   readonly ATTEST_EXPECTED_SIGNER="${server_url}/${ATTEST_WORKFLOW}@${ATTEST_BRANCH}"
+  readonly ATTEST_EXPECTED_REPO_ID="${repo_id}"
+  readonly ATTEST_EXPECTED_OWNER_ID="${owner_id}"
 }
 
 # Muss bestehen UND die erwarteten Angaben enthalten.
@@ -102,9 +121,10 @@ attest_verify_ok() {
     --predicate-type "${type}" \
     "$@" \
     --format json --jq "${ATTEST_FACTS}")" || attest_fail 3 "${title}: Verifikation fehlgeschlagen."
-  printf 'Art | Repository | Branch | Workflow | Runner\n%s\n' "${out}"
-  want="$(printf '%s\t%s\t%s\t%s\t%s' \
-    "${type}" "${ATTEST_EXPECTED_REPO}" "${ATTEST_BRANCH}" "${ATTEST_EXPECTED_SIGNER}" github-hosted)"
+  printf 'Art | Repository | Branch | Workflow | Runner | Repository-ID | Besitzer-ID\n%s\n' "${out}"
+  want="$(printf '%s\t%s\t%s\t%s\t%s\t%s\t%s' \
+    "${type}" "${ATTEST_EXPECTED_REPO}" "${ATTEST_BRANCH}" "${ATTEST_EXPECTED_SIGNER}" github-hosted \
+    "${ATTEST_EXPECTED_REPO_ID}" "${ATTEST_EXPECTED_OWNER_ID}")"
   if [ -z "${out}" ] || printf '%s\n' "${out}" \
     | grep --invert-match --line-regexp --fixed-strings --quiet -- "${want}"; then
     attest_fail 3 "${title}: Die verifizierten Angaben fehlen oder weichen ab."
