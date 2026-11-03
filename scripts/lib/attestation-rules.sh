@@ -23,6 +23,8 @@
 #   2  Voraussetzung oder Parameter fehlt bzw. ist ungueltig
 #   3  ein Nachweis fehlt, ist ungueltig oder hat abweichende Angaben
 #   4  eine Gegenprobe wurde akzeptiert: das Pruef-Gate ist wertlos
+#   5  eine Gegenprobe ist gescheitert, aber nicht am erwarteten Grund: Sie
+#      beweist nichts (z. B. Netzfehler, Token, Ratenbegrenzung)
 # =============================================================================
 
 readonly ATTEST_BRANCH="refs/heads/main"
@@ -110,16 +112,37 @@ attest_verify_ok() {
   attest_group_end
 }
 
-# Muss scheitern. $1 Titel, Rest: vollstaendiger Aufruf nach "verify"
+# Muss scheitern, UND zwar am erwarteten Grund (E-5-114).
+# $1 Titel, $2 erwarteter Grund (erweiterter regulaerer Ausdruck, muss eine
+# ganze Zeile der Ausgabe treffen), Rest: vollstaendiger Aufruf nach "verify"
+#
+# Ob die Gegenprobe gescheitert ist, entscheidet allein der Exit-Code. Die
+# Meldung ordnet nur einen feststehenden Fehlschlag ein: gh kennt fuer
+# "abgelehnt" und "Netz weg" denselben Exit-Code 1. Ohne diese Einordnung
+# gaelte jeder zufaellige Fehler als Beweis (fail open).
+# Die Meldungen stammen aus dem Quellcode von gh (cli/cli, pkg/cmd/attestation,
+# v2.102.0 und v2.103.3 gleich, geprueft am 2026-11-03). Aendert eine neue
+# gh-Version eine Meldung, wird der Lauf rot (Exit 5), nicht still gruen.
 attest_verify_must_fail() {
-  local title="$1"
-  shift
+  local title="$1" reason="$2" out
+  shift 2
   attest_group_start "Gegenprobe: ${title}"
-  if gh attestation verify "$@"; then
+  if out="$(gh attestation verify "$@" 2>&1)"; then
+    printf '%s\n' "${out}"
     attest_fail 4 "Gegenprobe '${title}' wurde akzeptiert. Das Pruef-Gate ist wertlos."
   fi
-  echo "Gegenprobe bestanden: abgelehnt."
+  printf '%s\n' "${out}"
+  if ! printf '%s\n' "${out}" | grep --extended-regexp --line-regexp --quiet -- "${reason}"; then
+    attest_fail 5 "Gegenprobe '${title}' ist nicht am erwarteten Grund gescheitert und beweist nichts. Erwartet (Muster): ${reason}"
+  fi
+  echo "Gegenprobe bestanden: abgelehnt aus dem erwarteten Grund."
   attest_group_end
+}
+
+# Macht einen Wert in einem erweiterten regulaeren Ausdruck woertlich
+# (Punkte in Namen, das Fragezeichen der URL usw.).
+attest_ere_literal() {
+  printf '%s' "$1" | sed --regexp-extended 's/[][\.*^$()+?{}|]/\\&/g'
 }
 
 # Die Gegenproben schuetzen vor einem Pruefwerkzeug, das alles durchwinkt.
@@ -146,22 +169,44 @@ attest_find_foreign_image() {
   readonly ATTEST_FOREIGN="${foreign}"
 }
 
-# Gegenproben. Weitere Optionen (Rest) haengt der Einstieg an, z. B. die
-# Quelle der Nachweise.
+# Gegenproben. Weitere Optionen (Rest) haengt der Einstieg an. Die erwarteten
+# Gruende gelten fuer Nachweise aus der GitHub-API (ohne --bundle-from-oci).
+# Aus der Registry meldet gh andere Gruende; ein Einstieg, der sie so laedt,
+# scheitert hier mit Exit 5, bis die Gruende dafuer ergaenzt sind (fail
+# closed).
+
+# Erwartet: Die API kennt zu diesem Digest in unserem Repository keinen
+# Nachweis (HTTP 404, URL mit genau diesem Digest). Derselbe Abruf mit
+# demselben Token hat eben fuer das eigene Image funktioniert, ein 404 wegen
+# fehlender Rechte ist damit ausgeschlossen.
 attest_reject_foreign_image() {
-  attest_verify_must_fail "fremdes Image ${ATTEST_FOREIGN}" "oci://${ATTEST_FOREIGN}" \
+  local reason
+  reason="Error: HTTP 404: Not Found \\(https://[^ ]+/repos/$(attest_ere_literal "${ATTEST_REPO}")/attestations/$(attest_ere_literal "${ATTEST_FOREIGN#*@}")\\?[^ ]*\\)"
+  attest_verify_must_fail "fremdes Image ${ATTEST_FOREIGN}" "${reason}" "oci://${ATTEST_FOREIGN}" \
     --repo "${ATTEST_REPO}" --signer-workflow "${ATTEST_WORKFLOW}" \
     --source-ref "${ATTEST_BRANCH}" --deny-self-hosted-runners "$@"
 }
 
+# Erwartet: Die Signaturpruefung (Sigstore) ist gelaufen und hat abgelehnt.
+# Die Bedingung "signiert von Workflow X" prueft gh nicht selbst, sondern
+# uebergibt sie an Sigstore; die Meldung nennt deshalb nicht den Workflow.
+# Schwaechste der drei Gegenproben. Aussagekraeftig wird sie durch die
+# Kontrollpaarung: Derselbe Aufruf mit dem richtigen Workflow hat unmittelbar
+# davor bestanden (attest_verify_ok). Abruf, Token und Netz sind damit
+# ausgeschlossen, uebrig bleibt der Workflow.
 attest_reject_wrong_workflow() {
-  attest_verify_must_fail "eigenes Image, falscher Workflow (${ATTEST_WRONG_WORKFLOW_FILE})" "${ATTEST_SUBJECT}" \
+  attest_verify_must_fail "eigenes Image, falscher Workflow (${ATTEST_WRONG_WORKFLOW_FILE})" \
+    'Error: verifying with issuer "[^"]+"' "${ATTEST_SUBJECT}" \
     --repo "${ATTEST_REPO}" --signer-workflow "${ATTEST_WRONG_WORKFLOW}" \
     --source-ref "${ATTEST_BRANCH}" --deny-self-hosted-runners "$@"
 }
 
+# Erwartet: gh nennt genau die geaenderte Bedingung (falscher Branch statt
+# des tatsaechlichen).
 attest_reject_wrong_branch() {
-  attest_verify_must_fail "eigenes Image, falscher Branch" "${ATTEST_SUBJECT}" \
+  local wrong_branch="refs/heads/not-main" reason
+  reason="Error: expected SourceRepositoryRef to be $(attest_ere_literal "${wrong_branch}"), got $(attest_ere_literal "${ATTEST_BRANCH}")"
+  attest_verify_must_fail "eigenes Image, falscher Branch" "${reason}" "${ATTEST_SUBJECT}" \
     --repo "${ATTEST_REPO}" --signer-workflow "${ATTEST_WORKFLOW}" \
-    --source-ref refs/heads/not-main --deny-self-hosted-runners "$@"
+    --source-ref "${wrong_branch}" --deny-self-hosted-runners "$@"
 }

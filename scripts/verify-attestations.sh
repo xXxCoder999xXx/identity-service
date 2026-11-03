@@ -27,6 +27,8 @@
 #   2  Voraussetzung oder Parameter fehlt bzw. ist ungueltig
 #   3  ein Nachweis fehlt, ist ungueltig oder hat abweichende Angaben
 #   4  eine Gegenprobe wurde akzeptiert: das Pruef-Gate ist wertlos
+#   5  eine Gegenprobe ist nicht am erwarteten Grund gescheitert: Sie beweist
+#      nichts (Details in scripts/lib/attestation-rules.sh)
 #
 # Geschrieben fuer den Linux-Runner. Braucht gh, docker (mit compose) und die
 # Umgebungsvariablen GH_TOKEN, GITHUB_REPOSITORY und GITHUB_SERVER_URL.
