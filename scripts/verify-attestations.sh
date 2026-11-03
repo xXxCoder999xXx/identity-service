@@ -20,7 +20,8 @@
 # Pruefung sollen trotzdem an EINER Stelle stehen.
 #
 # Verlangt werden dieses Repository, GENAU der Workflow WORKFLOW, der Branch
-# main und ein von GitHub betriebener Runner.
+# main, ein von GitHub betriebener Runner und die festen Kennungen von
+# Repository und Besitzer (E-5-121).
 #
 # Exit-Codes (jeder ungleich 0 macht den Lauf rot - fail closed):
 #   0  alle Nachweise verifiziert, alle Gegenproben abgelehnt
@@ -31,7 +32,8 @@
 #      nichts (Details in scripts/lib/attestation-rules.sh)
 #
 # Geschrieben fuer den Linux-Runner. Braucht gh, docker (mit compose) und die
-# Umgebungsvariablen GH_TOKEN, GITHUB_REPOSITORY und GITHUB_SERVER_URL.
+# Umgebungsvariablen GH_TOKEN, GITHUB_REPOSITORY, GITHUB_SERVER_URL,
+# GITHUB_REPOSITORY_ID und GITHUB_REPOSITORY_OWNER_ID.
 # =============================================================================
 set -euo pipefail
 
@@ -72,8 +74,14 @@ command -v docker >/dev/null 2>&1 || attest_fail 2 "docker wurde nicht gefunden.
 [ -n "${GH_TOKEN:-}" ] || attest_fail 2 "GH_TOKEN ist nicht gesetzt."
 [ -n "${GITHUB_REPOSITORY:-}" ] || attest_fail 2 "GITHUB_REPOSITORY ist nicht gesetzt."
 [ -n "${GITHUB_SERVER_URL:-}" ] || attest_fail 2 "GITHUB_SERVER_URL ist nicht gesetzt."
+[ -n "${GITHUB_REPOSITORY_ID:-}" ] || attest_fail 2 "GITHUB_REPOSITORY_ID ist nicht gesetzt."
+[ -n "${GITHUB_REPOSITORY_OWNER_ID:-}" ] || attest_fail 2 "GITHUB_REPOSITORY_OWNER_ID ist nicht gesetzt."
 
-attest_init "${GITHUB_REPOSITORY}" "${GITHUB_SERVER_URL}" "$1" "$2" "$3" "$4"
+# Die Kennungen setzt der Runner selbst (Standard-Umgebungsvariablen von
+# GitHub Actions); sie gehoeren zu dem Repository, dessen Workflow laeuft.
+# Auf dem Server kommen sie aus der root-eigenen Konfiguration (E-5-121).
+attest_init "${GITHUB_REPOSITORY}" "${GITHUB_SERVER_URL}" "$1" "$2" "$3" "$4" \
+  "${GITHUB_REPOSITORY_ID}" "${GITHUB_REPOSITORY_OWNER_ID}"
 attest_group_end
 
 attest_verify_ok "Herkunftsnachweis (von GitHub geladen)" "${ATTEST_PROVENANCE}"
