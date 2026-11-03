@@ -11,8 +11,8 @@
 # je Image prüft der Server Name UND Erbauer; ein Nachweis des API-Workflows
 # gilt nie für lego und umgekehrt. Die Gegenprobe "falscher Workflow" im
 # Prüfskript beweist das bei jedem Lauf. Rechte, Auslöser und Prüfregeln sind
-# dieselben wie in publish.yml; die Prüfung steht nur einmal, in
-# scripts/verify-attestations.sh.
+# dieselben wie in publish.yml; die Prüfregeln stehen nur einmal, in
+# scripts/lib/attestation-rules.sh (Einstieg scripts/verify-attestations.sh).
 #
 # Action-Pins am 2026-10-27 gegen die offiziellen Repositories aufgelöst
 # (git ls-remote); identisch mit publish.yml.
@@ -39,6 +39,7 @@ on:
       - ".github/workflows/publish-lego.yml"
       - "scripts/invoke-image-scan.sh"
       - "scripts/verify-attestations.sh"
+      - "scripts/lib/attestation-rules.sh"
 
 # Baseline wie in ci.yml: alles Nichtgenannte fällt auf "none".
 permissions:

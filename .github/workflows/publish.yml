@@ -169,7 +169,7 @@ jobs:
           DIGEST: ${{ steps.push.outputs.digest }}
         run: bash scripts/verify-attestations.sh "${IMAGE_NAME}" "${DIGEST}" publish.yml publish-lego.yml
         # Der Nachweis ist nur so viel wert wie seine Prüfung. Regeln und
-        # Gegenproben stehen in scripts/verify-attestations.sh, gemeinsam mit
-        # publish-lego.yml (E-5-78). Gegenprobe "falscher Workflow" mit
-        # publish-lego.yml: Ein Nachweis für die API darf nur von diesem
-        # Workflow stammen.
+        # Gegenproben stehen in scripts/lib/attestation-rules.sh (E-5-116),
+        # gemeinsam mit publish-lego.yml (E-5-78). Gegenprobe "falscher
+        # Workflow" mit publish-lego.yml: Ein Nachweis für die API darf nur
+        # von diesem Workflow stammen.
