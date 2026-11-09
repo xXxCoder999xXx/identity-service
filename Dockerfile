@@ -5,7 +5,7 @@
 # mit einem per Digest gepinnten Image wieder einfuehren.
 
 # ---- Build-Stage ----
-FROM mcr.microsoft.com/dotnet/sdk:10.0-noble@sha256:de4fe90a98845d75910b9769662465c84de1a934665c431279d1382b2bddc02b AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0-noble@sha256:212fe4cb74627d5adf9817a4088906ae3edff1bd853bb27565d4b46731efe61e AS build
 WORKDIR /src
 
 # Governance- und Projektdateien zuerst: Layer-Cache bleibt gueltig,
