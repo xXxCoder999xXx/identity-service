@@ -23,6 +23,6 @@
       entfallen bewusst (weniger Lieferkette, nur ein Testweg). Den Modus
       von dotnet test legt global.json fest ("test.runner").
     -->
-    <PackageVersion Include="xunit.v3" Version="4.0.2" />
+    <PackageVersion Include="xunit.v3" Version="4.0.3" />
   </ItemGroup>
 </Project>
