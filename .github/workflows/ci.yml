@@ -109,20 +109,30 @@ jobs:
         # passt das SDK im Image nicht zum Pin (rollForward: disable), scheitert
         # der Restore im Container. Die Basis-Images sind per Digest gepinnt.
 
+      - name: nginx-Image bauen (ohne Push, ohne Cache)
+        run: docker compose build --pull nginx
+        # Eigenes Image (ADR-016): gepinnte Basis plus Debian-Updates. Über
+        # compose gebaut, damit Kontext und Name aus compose.yaml kommen - eine
+        # Quelle der Wahrheit. Die folgenden Schritte nutzen dieses Image.
+
       - name: Image-Metadaten prüfen (Non-Root, numerische UID)
         run: |
           set -euo pipefail
-          user="$(docker image inspect identity-service-api:ci --format '{{.Config.User}}')"
-          echo "Config.User=${user}"
-          case "${user}" in
-            ''|0|*[!0-9]*)
-              echo "::error::Image-Nutzer muss numerisch und ungleich 0 sein (E-4b-4), ist: '${user}'"
-              exit 1
-              ;;
-          esac
+          for image in identity-service-api:ci identity-service-nginx:local; do
+            user="$(docker image inspect "${image}" --format '{{.Config.User}}')"
+            echo "${image}: Config.User=${user}"
+            case "${user}" in
+              ''|0|*[!0-9]*)
+                echo "::error::Image-Nutzer von ${image} muss numerisch und ungleich 0 sein (E-4b-4), ist: '${user}'"
+                exit 1
+                ;;
+            esac
+          done
         # Kubernetes prüft runAsNonRoot anhand der Image-Metadaten: ein Name
         # statt einer UID oder ein fehlender USER würde dort erst beim Deploy
-        # auffallen. Fail closed: leer, 0 oder nicht numerisch => rot.
+        # auffallen. Fail closed: leer, 0 oder nicht numerisch => rot. Seit
+        # ADR-016 gilt das auch für nginx: Das eigene Dockerfile wechselt für
+        # apt auf root und muss am Ende wieder auf 101 stehen.
 
       - name: Wegwerf-Zertifikate erzeugen (nginx -t und Smoke-Test)
         run: bash scripts/new-throwaway-certificates.sh
@@ -135,12 +145,13 @@ jobs:
         # Aufruf über "bash": unabhängig vom Ausführungs-Bit der Datei.
 
       - name: nginx-Konfiguration validieren (nginx -t)
-        run: docker compose run --rm --no-deps nginx nginx -t
-        # Über compose statt "docker run": geprüft wird gegen EXAKT das in
-        # compose.yaml gepinnte Image, mit denselben Mounts, read_only und
-        # tmpfs – eine Quelle der Wahrheit. Hebt Dependabot den nginx-Pin an,
+        run: docker compose run --rm --no-deps --pull never nginx nginx -t
+        # Über compose statt "docker run": geprüft wird gegen EXAKT das Image
+        # aus compose.yaml, mit denselben Mounts, read_only und tmpfs – eine
+        # Quelle der Wahrheit. Hebt Dependabot den nginx-Pin im Dockerfile an,
         # validiert dieser Schritt die Konfiguration gegen das neue Image.
         # --no-deps: der Dienst "api" wird hierfür nicht gestartet.
+        # --pull never: nur das eben gebaute Image, nie eines aus dem Netz.
 
       - name: Staging-Konfiguration prüfen (gerendert)
         env: &staging-env
@@ -148,6 +159,7 @@ jobs:
           # Prüfung braucht keine echten Werte: Digests aus Nullen, Pfade zu
           # den Wegwerf-Zertifikaten des Laufs und einer Dummy-Datei.
           API_IMAGE: ghcr.io/xxxcoder999xxx/identity-service@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          NGINX_IMAGE: ghcr.io/xxxcoder999xxx/identity-service-nginx@sha256:0000000000000000000000000000000000000000000000000000000000000000
           LEGO_IMAGE: ghcr.io/xxxcoder999xxx/identity-service-lego@sha256:0000000000000000000000000000000000000000000000000000000000000000
           STAGING_SERVER_NAME_FILE: ./ci-staging/server_name.conf
           STAGING_CA_DIR: ./certs/ca
@@ -164,15 +176,24 @@ jobs:
           staging=(--file compose.yaml --file compose.staging.yaml)
           mkdir -p ci-staging
           printf 'server_name staging.example.invalid;\n' > ci-staging/server_name.conf
+          # Der Platzhalter-Digest aus NGINX_IMAGE ist nicht ladbar. Für diesen
+          # Schritt zeigt NGINX_IMAGE auf die ID des eben gebauten Images
+          # (ADR-016); den Digest-Zwang hat der Schritt davor mit dem
+          # Platzhalter geprüft.
+          nginx_id="$(docker image inspect identity-service-nginx:local --format '{{.Id}}')"
+          case "${nginx_id}" in
+            sha256:*) ;;
+            *) echo "::error::Keine Image-ID für identity-service-nginx:local: '${nginx_id}'"; exit 1 ;;
+          esac
+          export NGINX_IMAGE="${nginx_id}"
           config="$(docker compose "${staging[@]}" config --format json)"
           volume="$(jq --raw-output '.volumes["tls-certificates"].name' <<<"${config}")"
-          nginx_image="$(jq --raw-output '.services.nginx.image' <<<"${config}")"
-          docker compose "${staging[@]}" run --rm --no-deps --entrypoint /bin/true nginx
+          docker compose "${staging[@]}" run --rm --no-deps --pull never --entrypoint /bin/true nginx
           docker run --rm --read-only --network none --cap-drop ALL \
             --security-opt no-new-privileges:true --user 0:0 \
             --volume "${PWD}/certs/edge:/src:ro" --volume "${volume}:/dst" \
-            --entrypoint /bin/cp "${nginx_image}" /src/edge.crt /src/edge.key /dst/
-          docker compose "${staging[@]}" run --rm --no-deps nginx nginx -t
+            --entrypoint /bin/cp "${nginx_id}" /src/edge.crt /src/edge.key /dst/
+          docker compose "${staging[@]}" run --rm --no-deps --pull never nginx nginx -t
         # Auf Staging liest nginx das Zertifikat aus dem Volume, das lego
         # füllt. Hier legt Compose das Volume an (der Lauf mit /bin/true; ein
         # von Hand angelegtes Volume quittiert Compose mit einer Warnung), und
@@ -180,6 +201,10 @@ jobs:
         # root nur in diesem Hilfsschritt, ohne Netz und ohne Capabilities
         # (das neue Volume gehört root). Danach dieselbe Prüfung
         # wie lokal: compose run mit exakt den Mounts aus der Staging-Variante.
+        # --pull never: Eine Image-ID ist für Compose auch ein gültiger Name;
+        # ohne die Option versucht Compose bei unbekannter ID ein Repository
+        # "sha256" aus dem Netz zu laden (gemessen). So startet nur das Image
+        # dieses Laufs.
 
       - name: Stack starten (Production-Modus)
         env:
@@ -256,6 +281,10 @@ jobs:
   # Aufnahme als Required Check ist eine eigene Entscheidung (ADR-014), fällig
   # vor dem ersten Deploy von lego.
   # Läuft auch im Wochenlauf: neue CVEs in fremden Images ohne neuen Commit.
+  # Bekannte Lücke (ADR-016, E-5-128): nginx wird hier frisch gebaut und
+  # bekommt dabei die neuesten Debian-Updates; der Lauf sagt also nichts über
+  # ein bereits veröffentlichtes nginx-Image. Der Scan des veröffentlichten
+  # Digests folgt, sobald publish-nginx.yml existiert.
   # ---------------------------------------------------------------------------
   third-party-image-scan:
     name: Image-Scan Drittanbieter (${{ matrix.profile }})
@@ -289,11 +318,12 @@ jobs:
               image="identity-service-lego:ci"
               ;;
             nginx)
-              # Eine Quelle der Wahrheit: das Image, das compose.yaml startet
-              # und Dependabot dort pflegt - kein zweiter Pin in diesem Workflow.
+              # Eigenes Image (ADR-016), gebaut wie im Stack: Kontext und Name
+              # aus compose.yaml, der Pin der Basis nur im Dockerfile - kein
+              # zweiter Pin in diesem Workflow.
               image="$(docker compose --file compose.yaml config --format json | jq -r '.services.nginx.image // empty')"
               [ -n "${image}" ] || { echo "::error::Kein nginx-Image in compose.yaml gefunden."; exit 1; }
-              docker pull "${image}"
+              docker compose --file compose.yaml build --pull nginx
               ;;
             *)
               echo "::error::Unbekanntes Profil '${PROFILE}'."

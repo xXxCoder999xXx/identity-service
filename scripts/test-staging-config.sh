@@ -4,7 +4,7 @@
 #
 # Aufruf:  bash scripts/test-staging-config.sh
 #          Erwartet die Pflichtvariablen aus compose.staging.yaml (API_IMAGE,
-#          LEGO_IMAGE, STAGING_*) in der Umgebung.
+#          NGINX_IMAGE, LEGO_IMAGE, STAGING_*) in der Umgebung.
 #
 # Geprueft wird, was Compose aus compose.yaml und compose.staging.yaml
 # ZUSAMMENBAUT ("docker compose config"), nicht der Text der Dateien. Nur so
@@ -106,10 +106,13 @@ check "lego-accounts nur bei lego" \
     | select(.type == "volume" and .source == "lego-accounts")] | length == 0'
 
 # 8. Gegenprobe: Ohne Pflichtvariable darf Compose nicht rendern. Sonst wuerde
-# der Server mit leerem Wert starten statt abzubrechen.
-if env -u API_IMAGE docker compose "${staging[@]}" config --quiet 2>/dev/null; then
-  fail 4 "Gegenprobe: Compose rendert ohne API_IMAGE. Die Variable ist nicht mehr Pflicht."
-fi
-echo "ok  Gegenprobe: ohne API_IMAGE bricht Compose ab"
+# der Server mit leerem Wert starten statt abzubrechen. Je Image der
+# eigenen Pipeline eine Probe (NGINX_IMAGE: ADR-016).
+for variable in API_IMAGE NGINX_IMAGE; do
+  if env -u "${variable}" docker compose "${staging[@]}" config --quiet 2>/dev/null; then
+    fail 4 "Gegenprobe: Compose rendert ohne ${variable}. Die Variable ist nicht mehr Pflicht."
+  fi
+  echo "ok  Gegenprobe: ohne ${variable} bricht Compose ab"
+done
 
 echo "Staging-Konfiguration bestanden."

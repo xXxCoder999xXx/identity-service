@@ -7,7 +7,14 @@ networks:
 
 services:
   nginx:
-    image: nginxinc/nginx-unprivileged:1.30.6@sha256:ec0f7ecb1fbd84959ac114e65fb36074ffc97d4d51db0f18ee925162d889dcef
+    # Eigenes Image (ADR-016): gepinnte Basis plus Debian-Updates. Der Pin
+    # steht nur in docker/nginx/Dockerfile. Der feste Name gibt dem Build
+    # einen Namen, ueber den CI-Scan und Metadaten-Pruefung das Image finden.
+    # Staging baut nie selbst und setzt den Digest aus der Registry
+    # (compose.staging.yaml).
+    build:
+      context: docker/nginx
+    image: identity-service-nginx:local
     networks:
       - edge
       - public

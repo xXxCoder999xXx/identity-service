@@ -1,0 +1,3 @@
+# Erlaubnisliste ohne Eintraege (Fail-closed): Das nginx-Image baut nur auf
+# dem gepinnten Basis-Image auf und braucht keine Datei aus dem Kontext.
+*

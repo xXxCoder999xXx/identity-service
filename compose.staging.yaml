@@ -18,6 +18,7 @@
 # ("${VAR:?...}"): Fehlt eine, bricht Compose ab, statt mit leerem Wert zu
 # starten (fail closed). Keine davon ist ein Secret.
 #   API_IMAGE                 API-Image per Digest (ADR-010)
+#   NGINX_IMAGE               nginx-Image per Digest (ADR-016)
 #   LEGO_IMAGE                lego-Image per Digest (E-5-78)
 #   STAGING_SERVER_NAME_FILE  Datei mit "server_name ...;" (E-5-82, ADR-004)
 #   STAGING_CA_DIR            interne CA, die das API-Zertifikat prueft
@@ -26,6 +27,10 @@
 
 services:
   nginx:
+    # Staging baut nie selbst: dasselbe Image wie in CI und Production
+    # (ADR-016, E-5-126).
+    build: !reset null
+    image: ${NGINX_IMAGE:?nginx-Image per Digest fehlt}
     # Oeffentlich, nur IPv4 (E-5-73); Port 80 fuer HTTP-01 und die
     # Weiterleitung, Port 443 fuer den Dienst (E-5-74).
     ports: !override
