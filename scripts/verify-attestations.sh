@@ -31,7 +31,7 @@
 #   5  eine Gegenprobe ist nicht am erwarteten Grund gescheitert: Sie beweist
 #      nichts (Details in scripts/lib/attestation-rules.sh)
 #
-# Geschrieben fuer den Linux-Runner. Braucht gh, docker (mit compose) und die
+# Geschrieben fuer den Linux-Runner. Braucht gh und die
 # Umgebungsvariablen GH_TOKEN, GITHUB_REPOSITORY, GITHUB_SERVER_URL,
 # GITHUB_REPOSITORY_ID und GITHUB_REPOSITORY_OWNER_ID.
 # =============================================================================
@@ -63,14 +63,13 @@ rules="${script_dir}/lib/attestation-rules.sh"
 # shellcheck source=lib/attestation-rules.sh
 . "${rules}"
 
-# compose.yaml liegt in der Wurzel des Repositories (fremdes Image, unten).
+# Pfade relativ zur Wurzel des Repositories (fremdes Image, unten).
 cd "${script_dir}/.."
 
 attest_group_start "Voraussetzungen"
 [ "$#" -eq 4 ] || attest_fail 2 "Erwartet: IMAGE_NAME DIGEST WORKFLOW WRONG_WORKFLOW (erhalten: $# Parameter)."
 
 command -v gh >/dev/null 2>&1 || attest_fail 2 "gh wurde nicht gefunden."
-command -v docker >/dev/null 2>&1 || attest_fail 2 "docker wurde nicht gefunden."
 [ -n "${GH_TOKEN:-}" ] || attest_fail 2 "GH_TOKEN ist nicht gesetzt."
 [ -n "${GITHUB_REPOSITORY:-}" ] || attest_fail 2 "GITHUB_REPOSITORY ist nicht gesetzt."
 [ -n "${GITHUB_SERVER_URL:-}" ] || attest_fail 2 "GITHUB_SERVER_URL ist nicht gesetzt."
@@ -88,7 +87,7 @@ attest_verify_ok "Herkunftsnachweis (von GitHub geladen)" "${ATTEST_PROVENANCE}"
 attest_verify_ok "Herkunftsnachweis (aus der Registry geladen)" "${ATTEST_PROVENANCE}" --bundle-from-oci
 attest_verify_ok "Stueckliste" "${ATTEST_SBOM}"
 
-attest_find_foreign_image .
+attest_find_foreign_image docker/nginx/Dockerfile
 
 # Gegenproben ueber beide Quellen. Der Server laedt Nachweise nur aus der
 # Registry (E-5-116); die Gegenproben ueber "oci" belegen bei jedem Lauf mit

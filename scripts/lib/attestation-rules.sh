@@ -166,7 +166,7 @@ attest_ere_literal() {
 }
 
 # Die Gegenproben schuetzen vor einem Pruefwerkzeug, das alles durchwinkt.
-# Das fremde Image (nginx aus compose.yaml) hat gar keinen Nachweis. Die
+# Das fremde Image (Basis des nginx-Images) hat gar keinen Nachweis. Die
 # beiden anderen pruefen das EIGENE Image und aendern je genau eine
 # Bedingung: Derselbe Aufruf besteht unmittelbar davor, also loest genau
 # diese Bedingung die Ablehnung aus. WRONG_WORKFLOW ist der Workflow des
@@ -174,16 +174,24 @@ attest_ere_literal() {
 # andere.
 
 # Sucht das fremde Image fuer die Gegenprobe und legt es in ATTEST_FOREIGN ab.
-# $1 Ordner mit der compose.yaml
+# $1 Pfad zu docker/nginx/Dockerfile
+# Quelle ist die gepinnte FROM-Zeile der nginx-Basis (ADR-016): ein Image, fuer
+# das es von uns sicher keinen Nachweis gibt. Eine Quelle der Wahrheit, die
+# Dependabot pflegt; sie liegt in der CI und im Release-Ordner auf dem Server
+# (Checkout des Repositorys). Seit ADR-016 enthaelt compose.yaml kein fremdes
+# Image mehr, die fruehere Suche dort fand nichts.
 # Kein Aufruf in "$(...)": attest_fail muss den ganzen Lauf beenden, nicht nur
 # eine Subshell.
 attest_find_foreign_image() {
-  local compose_dir="$1" foreign
+  local dockerfile="$1" foreign
   attest_group_start "Fremdes Image fuer die Gegenprobe"
-  foreign="$(cd "${compose_dir}" && docker compose config --images \
-    | grep --max-count 1 '^nginxinc/.*@sha256:' \
-    | sed --regexp-extended 's/:[^:@/]+@/@/')" || true
-  [ -n "${foreign}" ] || attest_fail 2 "Kein fremdes Image fuer die Gegenprobe gefunden."
+  [ -r "${dockerfile}" ] || attest_fail 2 "Dockerfile fuer das fremde Image nicht lesbar: ${dockerfile}"
+  # Nur eine Zeile mit vollstaendigem Digest zaehlt; der Tag wird entfernt,
+  # gepinnt ist der Inhalt.
+  foreign="$(grep --extended-regexp --max-count 1 \
+      '^FROM nginxinc/[^@ ]+@sha256:[0-9a-f]{64}( |$)' "${dockerfile}" \
+    | sed --regexp-extended 's/^FROM ([^ ]+).*/\1/; s/:[^:@/]+@/@/')" || true
+  [ -n "${foreign}" ] || attest_fail 2 "Kein fremdes Image fuer die Gegenprobe gefunden (FROM nginxinc/...@sha256 in ${dockerfile})."
   echo "${foreign}"
   attest_group_end
   readonly ATTEST_FOREIGN="${foreign}"
