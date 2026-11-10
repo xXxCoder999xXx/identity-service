@@ -1,0 +1,255 @@
+# =============================================================================
+# Veröffentlichung des nginx-Images (Schritt 5, ADR-010, ADR-016, E-5-127)
+# .github/workflows/publish-nginx.yml
+# Baut das eigene nginx-Image (gepinnte Basis plus Debian-Updates), prüft es
+# (Metadaten, Version, nginx -t, Smoke-Test durch den ganzen Stack, Image-Scan
+# mit Profil nginx), legt es in der GitHub Container Registry ab und versieht
+# es mit Herkunftsnachweis und Stückliste. Ein Prüf-Gate verifiziert beides;
+# zum Schluss wird geprüft, dass das Paket anonym nicht lesbar ist. Ein Deploy
+# findet hier NICHT statt.
+#
+# Warum ein eigener Workflow (E-5-78): Der Herkunftsnachweis nennt den
+# Workflow, der signiert hat. Mit einem Workflow je Image prüft der Server
+# Name UND Erbauer; die Gegenprobe "falscher Workflow" beweist das bei jedem
+# Lauf. Die Prüfregeln stehen nur einmal, in scripts/lib/attestation-rules.sh.
+#
+# Warum OHNE Pfadfilter (E-5-130): Ein Veröffentlichungs-Workflow, der selten
+# läuft, bricht still, wenn sich etwas ändert, das er liest (Vorfall nach
+# #146: compose.yaml geändert, Publish erst beim nächsten Merge rot). Ohne
+# Filter fällt so etwas beim nächsten Merge auf, und jedes Merge baut mit den
+# aktuellen Debian-Updates neu. Ein neues Image ist kein Deploy: Ausgerollt
+# wird nur über die Digest-Datei per PR (E-5-111).
+#
+# Action-Pins am 2026-11-10 gegen die offiziellen Repositories aufgelöst
+# (git ls-remote); identisch mit publish.yml und publish-lego.yml.
+#
+# Dieser Workflow läuft nicht bei Pull Requests: Er ist kein Status-Check im
+# Ruleset. Fehler zeigen sich erst nach dem Merge; ein fehlerhaftes Image
+# gelangt wegen der Schrittfolge trotzdem nicht in die Registry.
+# =============================================================================
+name: Publish nginx
+
+on:
+  push:
+    branches: [main]      # NUR main. Nie pull_request, nie workflow_dispatch:
+                          # Der Job hat Schreibrechte und darf nicht von einem
+                          # beliebigen Branch aus startbar sein.
+
+# Baseline wie in ci.yml: alles Nichtgenannte fällt auf "none".
+permissions:
+  contents: read
+
+# Veröffentlichungen laufen nacheinander und werden nie abgebrochen: Ein Lauf,
+# der zwischen Hochladen und Nachweis stirbt, hinterließe ein Image ohne
+# Nachweis. Eigene Gruppe je Workflow: nginx wartet nicht auf die API.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  publish-nginx:
+    name: nginx-Image veröffentlichen
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    # Ein Job-Block ERSETZT die Baseline: contents: read wird wiederholt.
+    # Dieselben vier Rechte wie in publish.yml (Begründung dort, ADR-010).
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+
+    env:
+      # Name in der Registry: kleingeschrieben und OHNE Tag.
+      IMAGE_NAME: ghcr.io/xxxcoder999xxx/identity-service-nginx
+      # Name aus compose.yaml (image: neben build:).
+      LOCAL_IMAGE: identity-service-nginx:local
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false  # Begründung siehe ci.yml, Job "Build & Test"
+
+      # --- 1. Bauen: genau EIN nginx-Image für alle folgenden Schritte -------
+      - name: Images bauen (einmal, ohne Cache)
+        run: docker compose build --pull api nginx
+        # Über compose: Kontext und Name aus compose.yaml, eine Quelle der
+        # Wahrheit. Die API wird nur für den Smoke-Test gebaut; veröffentlicht
+        # wird hier nur nginx.
+
+      # --- 2. Prüfen: bis hierher schreibt der Lauf nichts nach außen --------
+      - name: Image-Metadaten und Version prüfen
+        run: |
+          set -euo pipefail
+          user="$(docker image inspect "${LOCAL_IMAGE}" --format '{{.Config.User}}')"
+          echo "Config.User=${user}"
+          case "${user}" in
+            ''|0|*[!0-9]*)
+              echo "::error::Image-Nutzer muss numerisch und ungleich 0 sein (E-4b-4), ist: '${user}'"
+              exit 1
+              ;;
+          esac
+          # Eine Quelle der Wahrheit: die Version aus der FROM-Zeile.
+          expected="$(sed --quiet --regexp-extended \
+            's/^FROM nginxinc\/nginx-unprivileged:([^@]+)@sha256:.*/\1/p' docker/nginx/Dockerfile)"
+          if [ -z "${expected}" ]; then
+            echo "::error::Keine nginx-Version im Dockerfile gefunden."
+            exit 1
+          fi
+          actual="$(docker run --rm --read-only --network none --cap-drop ALL \
+            --security-opt no-new-privileges:true --entrypoint nginx "${LOCAL_IMAGE}" -v 2>&1)"
+          echo "erwartet=${expected} gemeldet=${actual}"
+          if [ "${actual}" != "nginx version: nginx/${expected}" ]; then
+            echo "::error::nginx meldet nicht Version ${expected}."
+            exit 1
+          fi
+        # UID: Das Dockerfile wechselt für apt auf root und muss am Ende
+        # wieder auf 101 stehen; Laufzeitprüfungen wie runAsNonRoot lesen die
+        # Zahl aus den Metadaten. Version: Ein falscher Pin oder ein
+        # versehentlich angehobenes nginx fällt hier auf. nginx -v schreibt
+        # nach stderr, deshalb 2>&1.
+
+      - name: Wegwerf-Zertifikate erzeugen
+        run: bash scripts/new-throwaway-certificates.sh
+        # Keine Secrets: Zertifikate nur für diesen Lauf (Skriptkopf).
+
+      - name: nginx-Konfiguration validieren (nginx -t)
+        run: docker compose run --rm --no-deps --pull never nginx nginx -t
+        # Wie in ci.yml: exakt das Image und die Mounts aus compose.yaml.
+        # --pull never: nur das eben gebaute Image, nie eines aus dem Netz.
+
+      - name: Stack starten (Production-Modus, ohne Neubau)
+        env:
+          ASPNETCORE_ENVIRONMENT: Production
+        run: |
+          set -euo pipefail
+          docker compose up --detach --no-build
+          container="$(docker compose ps --quiet nginx)"
+          built="$(docker image inspect "${LOCAL_IMAGE}" --format '{{.Id}}')"
+          running="$(docker inspect "${container}" --format '{{.Image}}')"
+          echo "gebaut=${built} laufend=${running}"
+          if [ "${built}" != "${running}" ]; then
+            echo "::error::Der Stack läuft nicht mit dem eben gebauten nginx-Image."
+            exit 1
+          fi
+        # --no-build: fehlt das Image, scheitert der Schritt, statt still ein
+        # zweites zu bauen. Der Vergleich der Image-IDs beweist, dass getestet
+        # wird, was veröffentlicht wird (fail closed).
+
+      - name: Smoke-Test (Health, Security-Header, Netzgrenze)
+        shell: pwsh
+        run: ./scripts/Test-Stack.ps1 -CaFile certs/ca/internal-ca.crt
+        # nginx ist der Einstieg: nginx -t beweist nur, dass die Konfiguration
+        # lesbar ist. TLS, Weiterleitung und Header zeigt nur eine echte
+        # Anfrage durch die ganze Kette.
+
+      - name: Container-Logs (nur bei Fehlschlag)
+        if: failure()
+        run: docker compose logs --no-color --tail 100
+
+      - name: Image scannen (Bericht, Blindheits-Schutz, Gate)
+        run: bash scripts/invoke-image-scan.sh "${LOCAL_IMAGE}" nginx
+        # Dasselbe Skript, Profil und derselbe Schwellenwert wie im Job
+        # "Image-Scan Drittanbieter" in ci.yml. Nebenprodukt: die Stückliste
+        # scan/out/sbom.cdx.json (CycloneDX).
+
+      # --- 3. Veröffentlichen ------------------------------------------------
+      - name: An der Registry anmelden
+        env:
+          REGISTRY_TOKEN: ${{ github.token }}
+        run: printf '%s' "${REGISTRY_TOKEN}" | docker login ghcr.io --username "${GITHUB_ACTOR}" --password-stdin
+        # Begründung siehe publish.yml.
+
+      - name: Image hochladen (Tag = Commit, nie latest)
+        id: push
+        run: |
+          set -euo pipefail
+          ref="${IMAGE_NAME}:${GITHUB_SHA}"
+          docker tag "${LOCAL_IMAGE}" "${ref}"
+          docker push "${ref}"
+          digest="$(docker image inspect "${ref}" \
+            --format '{{range .RepoDigests}}{{println .}}{{end}}' \
+            | grep --max-count 1 "^${IMAGE_NAME}@sha256:" | cut --delimiter @ --fields 2)"
+          case "${digest}" in
+            sha256:*) ;;
+            *) echo "::error::Kein Digest für das hochgeladene Image ermittelt."; exit 1 ;;
+          esac
+          if [ "${#digest}" -ne 71 ]; then
+            echo "::error::Digest hat nicht die erwartete Länge: '${digest}'"
+            exit 1
+          fi
+          echo "Veröffentlicht: ${IMAGE_NAME}@${digest}"
+          echo "digest=${digest}" >> "${GITHUB_OUTPUT}"
+        # Gleiche Logik wie in publish.yml und publish-lego.yml (dritte
+        # Kopie). Herausziehen in ein Skript ist ein eigener refactor-PR.
+
+      # --- 4. Nachweise ------------------------------------------------------
+      - name: Herkunftsnachweis ausstellen
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+          create-storage-record: false
+
+      - name: Stückliste als Nachweis ausstellen
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          sbom-path: scan/out/sbom.cdx.json
+          push-to-registry: true
+          create-storage-record: false
+
+      # --- 5. Prüf-Gate ------------------------------------------------------
+      - name: Nachweise verifizieren (mit Gegenprobe)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: bash scripts/verify-attestations.sh "${IMAGE_NAME}" "${DIGEST}" publish-nginx.yml publish.yml
+        # Gegenprobe "falscher Workflow" mit publish.yml: Ein Nachweis für
+        # nginx darf nur von diesem Workflow stammen (E-5-78).
+
+      # --- 6. Sichtbarkeit ---------------------------------------------------
+      - name: Paket anonym nicht lesbar (mit Gegenprobe)
+        run: |
+          set -euo pipefail
+          # Fragt den Token-Endpunkt der Registry OHNE Anmeldung (gemessen am
+          # 2026-11-10): privat 401, nicht vorhanden 403, öffentlich 200.
+          anonymous() {
+            curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+              --max-time 20 "https://ghcr.io/token?scope=repository:$1:pull&service=ghcr.io"
+          }
+          # Gegenprobe zuerst: ein bekannt öffentliches Paket muss 200 liefern,
+          # sonst kann diese Prüfung "öffentlich" gar nicht erkennen. Quelle
+          # ist der gepinnte Scanner aus compose.scan.yaml (eine Quelle).
+          public="$(sed --quiet --regexp-extended \
+            's/^ *image: ghcr\.io\/([^:@]+)[:@].*/\1/p' compose.scan.yaml | head -n 1)"
+          if [ -z "${public}" ]; then
+            echo "::error::Kein öffentliches Paket für die Gegenprobe in compose.scan.yaml gefunden."
+            exit 1
+          fi
+          code="$(anonymous "${public}")"
+          echo "Gegenprobe ${public}: HTTP ${code} (erwartet 200)"
+          if [ "${code}" != "200" ]; then
+            echo "::error::Gegenprobe: Das öffentliche Paket ${public} ergab HTTP ${code}. Die Prüfung erkennt 'öffentlich' nicht."
+            exit 1
+          fi
+          own="${IMAGE_NAME#ghcr.io/}"
+          code="$(anonymous "${own}")"
+          echo "${own}: HTTP ${code} (erwartet 401)"
+          if [ "${code}" != "401" ]; then
+            echo "::error::Das Paket ${own} ist anonym nicht eindeutig gesperrt (HTTP ${code}). Sichtbarkeit in den Paket-Einstellungen auf privat stellen (E-5-115)."
+            exit 1
+          fi
+          echo "Paket anonym nicht lesbar: ${own}"
+        # E-5-115 und E-5-131: Neue Pakete aus diesem Repository waren zweimal
+        # öffentlich, ohne dass jemand umgestellt hat (Sitzung 27 und lego,
+        # gemessen 2026-11-10), entgegen der GitHub-Doku. Der Schritt
+        # verhindert nichts (das Image liegt schon in der Registry), meldet
+        # es aber sofort statt erst beim Deploy. Nach dem Hochladen existiert
+        # das Paket; 403 ("nicht vorhanden") wäre deshalb unerwartet und
+        # zählt ebenfalls als Fehlschlag (fail closed). Ein Netzfehler beendet
+        # curl mit Exit ungleich 0 und macht den Schritt rot.
