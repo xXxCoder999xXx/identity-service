@@ -40,6 +40,7 @@ on:
       - "scripts/invoke-image-scan.sh"
       - "scripts/verify-attestations.sh"
       - "scripts/lib/attestation-rules.sh"
+      - "scripts/verify-package-private.sh"
 
 # Baseline wie in ci.yml: alles Nichtgenannte fällt auf "none".
 permissions:
@@ -175,3 +176,10 @@ jobs:
         run: bash scripts/verify-attestations.sh "${IMAGE_NAME}" "${DIGEST}" publish-lego.yml publish.yml
         # Gegenprobe "falscher Workflow" mit publish.yml: Ein Nachweis für
         # lego darf nur von diesem Workflow stammen (E-5-78).
+
+      # --- 6. Sichtbarkeit ---------------------------------------------------
+      - name: Paket anonym nicht lesbar (mit Gegenprobe)
+        run: bash scripts/verify-package-private.sh "${IMAGE_NAME}"
+        # E-5-115 und E-5-131: Das lego-Paket war nach dem ersten Lauf
+        # öffentlich, ohne dass jemand umgestellt hat (gemessen 2026-11-10).
+        # Regeln, Gegenprobe und Exit-Codes stehen im Skriptkopf.

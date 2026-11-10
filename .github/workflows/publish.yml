@@ -175,3 +175,10 @@ jobs:
         # gemeinsam mit publish-lego.yml (E-5-78). Gegenprobe "falscher
         # Workflow" mit publish-lego.yml: Ein Nachweis für die API darf nur
         # von diesem Workflow stammen.
+
+      # --- 6. Sichtbarkeit ---------------------------------------------------
+      - name: Paket anonym nicht lesbar (mit Gegenprobe)
+        run: bash scripts/verify-package-private.sh "${IMAGE_NAME}"
+        # E-5-115 und E-5-131: Das API-Paket war in Sitzung 27 öffentlich, ohne
+        # dass jemand umgestellt hat. Regeln, Gegenprobe und Exit-Codes stehen
+        # im Skriptkopf.
