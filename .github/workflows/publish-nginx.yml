@@ -5,7 +5,8 @@
 # (Metadaten, Version, nginx -t, Smoke-Test durch den ganzen Stack, Image-Scan
 # mit Profil nginx), legt es in der GitHub Container Registry ab und versieht
 # es mit Herkunftsnachweis und Stückliste. Ein Prüf-Gate verifiziert beides;
-# zum Schluss wird geprüft, dass das Paket anonym nicht lesbar ist. Ein Deploy
+# zum Schluss wird geprüft, dass das Paket anonym nicht lesbar ist
+# (scripts/verify-package-private.sh). Ein Deploy
 # findet hier NICHT statt.
 #
 # Warum ein eigener Workflow (E-5-78): Der Herkunftsnachweis nennt den
@@ -214,42 +215,6 @@ jobs:
 
       # --- 6. Sichtbarkeit ---------------------------------------------------
       - name: Paket anonym nicht lesbar (mit Gegenprobe)
-        run: |
-          set -euo pipefail
-          # Fragt den Token-Endpunkt der Registry OHNE Anmeldung (gemessen am
-          # 2026-11-10): privat 401, nicht vorhanden 403, öffentlich 200.
-          anonymous() {
-            curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
-              --max-time 20 "https://ghcr.io/token?scope=repository:$1:pull&service=ghcr.io"
-          }
-          # Gegenprobe zuerst: ein bekannt öffentliches Paket muss 200 liefern,
-          # sonst kann diese Prüfung "öffentlich" gar nicht erkennen. Quelle
-          # ist der gepinnte Scanner aus compose.scan.yaml (eine Quelle).
-          public="$(sed --quiet --regexp-extended \
-            's/^ *image: ghcr\.io\/([^:@]+)[:@].*/\1/p' compose.scan.yaml | head -n 1)"
-          if [ -z "${public}" ]; then
-            echo "::error::Kein öffentliches Paket für die Gegenprobe in compose.scan.yaml gefunden."
-            exit 1
-          fi
-          code="$(anonymous "${public}")"
-          echo "Gegenprobe ${public}: HTTP ${code} (erwartet 200)"
-          if [ "${code}" != "200" ]; then
-            echo "::error::Gegenprobe: Das öffentliche Paket ${public} ergab HTTP ${code}. Die Prüfung erkennt 'öffentlich' nicht."
-            exit 1
-          fi
-          own="${IMAGE_NAME#ghcr.io/}"
-          code="$(anonymous "${own}")"
-          echo "${own}: HTTP ${code} (erwartet 401)"
-          if [ "${code}" != "401" ]; then
-            echo "::error::Das Paket ${own} ist anonym nicht eindeutig gesperrt (HTTP ${code}). Sichtbarkeit in den Paket-Einstellungen auf privat stellen (E-5-115)."
-            exit 1
-          fi
-          echo "Paket anonym nicht lesbar: ${own}"
-        # E-5-115 und E-5-131: Neue Pakete aus diesem Repository waren zweimal
-        # öffentlich, ohne dass jemand umgestellt hat (Sitzung 27 und lego,
-        # gemessen 2026-11-10), entgegen der GitHub-Doku. Der Schritt
-        # verhindert nichts (das Image liegt schon in der Registry), meldet
-        # es aber sofort statt erst beim Deploy. Nach dem Hochladen existiert
-        # das Paket; 403 ("nicht vorhanden") wäre deshalb unerwartet und
-        # zählt ebenfalls als Fehlschlag (fail closed). Ein Netzfehler beendet
-        # curl mit Exit ungleich 0 und macht den Schritt rot.
+        run: bash scripts/verify-package-private.sh "${IMAGE_NAME}"
+        # E-5-115 und E-5-131. Regeln, Gegenprobe und Exit-Codes stehen im
+        # Skriptkopf; dasselbe Skript in allen publish*.yml.
