@@ -88,10 +88,24 @@ updates:
       prefix: "chore"
       include: "scope"
 
-  # Images in compose.yaml (nginx-unprivileged). Eigenes Ökosystem: "docker"
-  # liest keine Compose-Dateien.
+  # Images in Compose-Dateien der Wurzel (heute grype in compose.scan.yaml).
+  # Eigenes Ökosystem: "docker" liest keine Compose-Dateien. nginx steht seit
+  # ADR-016 nicht mehr hier, sondern in docker/nginx/Dockerfile; seine
+  # Stable-Regel ist mit umgezogen (eine Quelle der Wahrheit).
   - package-ecosystem: "docker-compose"
     directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+
+  # nginx-Image (ADR-016): Basis nginx-unprivileged im eigenen Dockerfile, per
+  # Digest gepinnt. Eigener Eintrag, weil "docker" nur das Verzeichnis liest,
+  # das unter directory steht.
+  - package-ecosystem: "docker"
+    directory: "/docker/nginx"
     schedule:
       interval: "weekly"
       day: "monday"
