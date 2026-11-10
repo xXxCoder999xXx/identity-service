@@ -67,9 +67,11 @@ jobs:
 
       # --- 1. Bauen: genau EIN Image für alle folgenden Schritte -------------
       - name: Image bauen (einmal, ohne Cache)
-        run: docker compose build --pull api
+        run: docker compose build --pull api nginx
         # Über compose, damit Stack, Scan und Veröffentlichung nachweislich
         # dasselbe Image verwenden. Die Basis-Images sind per Digest gepinnt.
+        # nginx baut der Stack seit ADR-016 selbst; ohne ihn scheitert der
+        # Start mit --no-build. Veröffentlicht wird hier nur die API.
 
       # --- 2. Prüfen: bis hierher schreibt der Lauf nichts nach außen --------
       - name: Wegwerf-Zertifikate erzeugen
