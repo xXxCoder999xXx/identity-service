@@ -167,24 +167,10 @@ jobs:
         id: push
         run: |
           set -euo pipefail
-          ref="${IMAGE_NAME}:${GITHUB_SHA}"
-          docker tag "${LOCAL_IMAGE}" "${ref}"
-          docker push "${ref}"
-          digest="$(docker image inspect "${ref}" \
-            --format '{{range .RepoDigests}}{{println .}}{{end}}' \
-            | grep --max-count 1 "^${IMAGE_NAME}@sha256:" | cut --delimiter @ --fields 2)"
-          case "${digest}" in
-            sha256:*) ;;
-            *) echo "::error::Kein Digest für das hochgeladene Image ermittelt."; exit 1 ;;
-          esac
-          if [ "${#digest}" -ne 71 ]; then
-            echo "::error::Digest hat nicht die erwartete Länge: '${digest}'"
-            exit 1
-          fi
+          digest="$(bash scripts/push-image.sh "${LOCAL_IMAGE}" "${IMAGE_NAME}" "${GITHUB_SHA}")"
           echo "Veröffentlicht: ${IMAGE_NAME}@${digest}"
           echo "digest=${digest}" >> "${GITHUB_OUTPUT}"
-        # Gleiche Logik wie in publish.yml und publish-lego.yml (dritte
-        # Kopie). Herausziehen in ein Skript ist ein eigener refactor-PR.
+        # Begründung siehe publish.yml (scripts/push-image.sh, E-5-158).
 
       # --- 4. Nachweise ------------------------------------------------------
       - name: Herkunftsnachweis ausstellen
