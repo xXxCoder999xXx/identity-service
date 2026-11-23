@@ -1,0 +1,222 @@
+# =============================================================================
+# Freigabe fuer Staging (ADR-017, PR 4b) - Zielpfad im Repo:
+# .github/workflows/release-staging.yml
+#
+# Was: Nach jedem Merge, der die Freigabe oder das Bundle aendert, baut dieser
+# Workflow das Staging-Bundle (deploy/staging.json plus Konfiguration),
+# laedt es nach GHCR und stellt einen Freigabe-Nachweis aus. Der Server
+# prueft genau diesen Nachweis, bevor er deployt (PR 4c).
+#
+# Warum der Workflow so eng ist: Er signiert Freigaben. Wer ihn manipuliert,
+# bestimmt, was auf Staging laeuft. Deshalb:
+#   - Ausloeser nur Push auf main mit Pfadfilter. Nie pull_request, nie
+#     workflow_dispatch: kein vom Einreicher kontrollierter Text, kein
+#     Ausloesen von Hand.
+#   - Schreibrechte nur im Job, dieselben wie publish*.yml.
+#   - Erst pruefen, dann signieren: Format der Freigabe, Herkunft der drei
+#     Images (dieselbe Pruefung wie auf dem Server, E-5-154).
+#   - Der Tag "staging" wird zuletzt gesetzt, und nur, wenn dieser Commit
+#     noch der Stand von main ist (E-5-156).
+#
+# Pfadfilter (E-5-159): alle Dateien des Bundles (RELEASE_FILES in
+# scripts/lib/release-rules.sh) plus die Skripte dieses Workflows. Der
+# Abgleich Filter <-> Dateiliste steht in scripts/test-release-file.sh und
+# laeuft in jedem Pull Request.
+#
+# Erster Lauf: Das neue Paket identity-service-release startet oeffentlich
+# (gemessen in diesem Repository). Der Schritt "Paket anonym nicht lesbar"
+# scheitert dann absichtlich. Danach: Paket auf privat stellen, dem
+# Maschinenkonto Leserecht geben, Lauf neu starten.
+#
+# Action-Pins wie in publish.yml (dort aufgeloest und vermerkt).
+# =============================================================================
+name: Release Staging
+
+on:
+  push:
+    branches: [main]      # NUR main. Nie pull_request, nie workflow_dispatch.
+    paths:
+      # Bundle (RELEASE_FILES)
+      - "deploy/staging.json"
+      - "compose.yaml"
+      - "compose.staging.yaml"
+      - "nginx.staging.conf"
+      - "nginx/snippets/**"
+      - "docker/nginx/Dockerfile"
+      # Dieser Workflow und seine Skripte (selten Laufendes bricht sonst
+      # still, Lehre aus #146)
+      - ".github/workflows/release-staging.yml"
+      - "scripts/verify-release-file.sh"
+      - "scripts/verify-attestations-server.sh"
+      - "scripts/build-release-bundle.sh"
+      - "scripts/push-image.sh"
+      - "scripts/verify-package-private.sh"
+      - "scripts/verify-release.sh"
+      - "scripts/lib/**"
+
+# Baseline: nur lesen. Der Job ersetzt sie (nicht erweitern).
+permissions:
+  contents: read
+
+# Freigaben nie abbrechen und nie parallel: Ein abgebrochener Lauf koennte
+# ein Bundle ohne Nachweis hinterlassen; zwei parallele koennten den Tag in
+# falscher Reihenfolge setzen.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Freigabe ausstellen
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    permissions:
+      contents: read
+      packages: write      # Bundle hochladen
+      id-token: write      # OIDC-Token fuer die Signatur (Sigstore)
+      attestations: write  # Nachweis speichern
+
+    env:
+      # Muss RELEASE_IMAGE_NAME in scripts/lib/release-rules.sh gleichen;
+      # verify-release.sh lehnt jeden anderen Namen ab, und
+      # test-release-file.sh vergleicht beide.
+      RELEASE_IMAGE: ghcr.io/xxxcoder999xxx/identity-service-release
+      LOCAL_IMAGE: identity-service-release:build
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # --- 1. Freigabe pruefen -------------------------------------------------
+      - name: Freigabe-Datei prüfen (Format)
+        run: bash scripts/verify-release-file.sh deploy/staging.json
+        # Dieselbe Prüfung wie im Pull Request (4a). Hier noch einmal, weil
+        # nur signiert wird, was in DIESEM Lauf geprüft wurde.
+
+      - name: An der Registry anmelden
+        env:
+          REGISTRY_TOKEN: ${{ github.token }}
+        run: printf '%s' "${REGISTRY_TOKEN}" | docker login ghcr.io --username "${GITHUB_ACTOR}" --password-stdin
+        # Begründung siehe publish.yml.
+
+      - name: Freigegebene Images prüfen (wie der Server)
+        run: |
+          set -euo pipefail
+          count=0
+          while IFS=$'\t' read -r key ref; do
+            case "${key}" in api | nginx | lego) ;; *) continue ;; esac
+            bash scripts/verify-attestations-server.sh "${ref}" docker/nginx/Dockerfile
+            count=$((count + 1))
+          done < <(bash scripts/verify-release-file.sh deploy/staging.json)
+          if [ "${count}" -ne 3 ]; then
+            echo "::error::Erwartet drei geprüfte Images, geprüft: ${count}"
+            exit 1
+          fi
+        # E-5-154: Freigegeben wird nur, was von unseren Workflows auf main
+        # gebaut wurde, mit Stückliste - geprüft mit dem Einstieg des
+        # Servers (nur Registry, Gegenproben). Die Referenzen kommen aus der
+        # eben geprüften Datei, nie aus Commit- oder PR-Text.
+
+      # --- 2. Bundle bauen und hochladen --------------------------------------
+      - name: Bundle bauen
+        run: bash scripts/build-release-bundle.sh "${LOCAL_IMAGE}"
+        # Feste Dateiliste, leerer Build-Kontext, FROM scratch (E-5-155).
+
+      - name: Bundle hochladen (Tag = Commit)
+        id: push
+        run: |
+          set -euo pipefail
+          digest="$(bash scripts/push-image.sh "${LOCAL_IMAGE}" "${RELEASE_IMAGE}" "${GITHUB_SHA}")"
+          echo "Veröffentlicht: ${RELEASE_IMAGE}@${digest}"
+          echo "digest=${digest}" >> "${GITHUB_OUTPUT}"
+        # Erst unter dem Commit, nicht unter "staging": Der Server sieht das
+        # Bundle erst, wenn es signiert und geprüft ist.
+
+      - name: Paket anonym nicht lesbar (mit Gegenprobe)
+        run: bash scripts/verify-package-private.sh "${RELEASE_IMAGE}"
+        # E-5-115. Vor dem Signieren: Ein öffentliches Paket wird gar nicht
+        # erst freigegeben. Beim allerersten Lauf rot (siehe Kopf).
+
+      # --- 3. Freigabe-Nachweis -------------------------------------------------
+      - name: Freigabe-Nachweis ausstellen
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.RELEASE_IMAGE }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          # Muss RELEASE_PREDICATE_TYPE in scripts/lib/release-rules.sh
+          # gleichen (test-release-file.sh vergleicht beide).
+          predicate-type: https://github.com/xXxCoder999xXx/identity-service/release/v1
+          predicate-path: deploy/staging.json
+          push-to-registry: true
+          create-storage-record: false
+        # Der Predicate IST die geprüfte Freigabe-Datei (E-5-145). Run-ID und
+        # Commit stehen im Zertifikat (Fulcio), nicht in der Datei.
+
+      - name: Freigabe-Nachweis prüfen (per Digest)
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          set -euo pipefail
+          bash scripts/verify-release.sh "${RELEASE_IMAGE}@${DIGEST}" docker/nginx/Dockerfile | tee release-facts.txt
+          fact() { awk -F'\t' -v k="$1" '$1 == "freigabe" && $2 == k { print $3 }' release-facts.txt; }
+          check() {
+            if [ "$(fact "$1")" != "$2" ]; then
+              echo "::error::Fakt $1 ist '$(fact "$1")', erwartet '$2'."
+              exit 1
+            fi
+          }
+          check subject "${DIGEST}"
+          check run "${GITHUB_RUN_ID}"
+          check commit "${GITHUB_SHA}"
+        # E-5-157: Der Nachweis muss von DIESEM Lauf und DIESEM Commit
+        # stammen (aus dem Zertifikat, nicht aus der Datei). Der Prüfer
+        # liest die Image-Referenzen über gojq (gh --jq) - der Beleg, dass
+        # jq und gojq die Regeln gleich verstehen (E-5-150).
+
+      # --- 4. Tag staging setzen ----------------------------------------------
+      - name: Aktualitätsschutz (nur der neueste Stand von main)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          head="$(gh api "repos/${GITHUB_REPOSITORY}/commits/main" --jq .sha)"
+          if [ "${head}" != "${GITHUB_SHA}" ]; then
+            echo "::error::main steht inzwischen auf ${head}; dieser Lauf (${GITHUB_SHA}) setzt staging nicht."
+            exit 1
+          fi
+          echo "main = ${GITHUB_SHA}"
+        # E-5-156: Ein neu gestarteter alter Lauf (Re-run) darf staging nicht
+        # zurücksetzen. Zwischen dieser Abfrage und dem Tag bleiben Sekunden;
+        # dafür gilt am Server die Downgrade-Regel über die Run-ID (E-5-146).
+        # Leserecht genügt (contents: read).
+
+      - name: Tag staging setzen
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          set -euo pipefail
+          staged="$(bash scripts/push-image.sh "${LOCAL_IMAGE}" "${RELEASE_IMAGE}" staging)"
+          if [ "${staged}" != "${DIGEST}" ]; then
+            echo "::error::staging zeigt auf ${staged}, erwartet ${DIGEST}."
+            exit 1
+          fi
+          echo "staging -> ${RELEASE_IMAGE}@${DIGEST}"
+
+      - name: Server-Prüfung nachstellen (per Tag staging)
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          set -euo pipefail
+          bash scripts/verify-release.sh "${RELEASE_IMAGE}:staging" docker/nginx/Dockerfile | tee release-facts-tag.txt
+          subject="$(awk -F'\t' '$1 == "freigabe" && $2 == "subject" { print $3 }' release-facts-tag.txt)"
+          run="$(awk -F'\t' '$1 == "freigabe" && $2 == "run" { print $3 }' release-facts-tag.txt)"
+          if [ "${subject}" != "${DIGEST}" ] || [ "${run}" != "${GITHUB_RUN_ID}" ]; then
+            echo "::error::staging liefert subject '${subject}' und Run '${run}', erwartet ${DIGEST} und ${GITHUB_RUN_ID}."
+            exit 1
+          fi
+        # Genau der Weg des Servers: per Tag, gh löst auf, danach nur der
+        # Digest. Bricht der Weg, zeigt es sich hier und nicht erst am Server
+        # (E-5-141).

@@ -41,6 +41,7 @@ on:
       - "scripts/verify-attestations.sh"
       - "scripts/verify-attestations-server.sh"
       - "scripts/lib/attestation-rules.sh"
+      - "scripts/lib/registry-only.sh"
       - "scripts/verify-package-private.sh"
       - "scripts/push-image.sh"
 
