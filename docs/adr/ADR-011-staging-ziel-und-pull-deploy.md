@@ -2,6 +2,7 @@
 
 - **Status:** Akzeptiert
 - **Datum:** 2026-10-17
+- **Teilweise ersetzt:** E-5-23 und E-5-25 durch ADR-017 (E-5-149)
 
 ## Kontext
 
@@ -39,9 +40,9 @@ Teilentscheidungen:
 | E-5-17 | netcup VPS Wien; Pull-Deploy mit Prüfung des Herkunftsnachweises auf dem Server (Repository, `refs/heads/main`, `publish.yml`); Start per Digest, nie per Tag |
 | E-5-21 | GHCR bleibt privat. Der Server liest mit einem klassischen Token (nur `read:packages`, mit Ablaufdatum) eines eigenen Maschinenkontos. Lesezugriff wird je Service-Paket einzeln vergeben |
 | E-5-22 | Eigene Domain; Zertifikat von Let's Encrypt (ACME über Port 80); CAA-Eintrag beschränkt die Ausstellung auf Let's Encrypt |
-| E-5-23 | Die Konfiguration (`compose.yaml`, `nginx.conf`) kommt per `git pull` aus dem Repository und wird erst nach Prüfung der Commit-Signatur übernommen |
+| E-5-23 | Die Konfiguration (`compose.yaml`, `nginx.conf`) kommt per `git pull` aus dem Repository und wird erst nach Prüfung der Commit-Signatur übernommen. **Ersetzt durch ADR-017 (E-5-149).** |
 | E-5-24 | Für Staging akzeptierte Risiken (siehe Konsequenzen) |
-| E-5-25 | Als Signatur für `main` gilt der Web-Flow-Schlüssel von GitHub, weil Squash-Merges von GitHub signiert werden |
+| E-5-25 | Als Signatur für `main` gilt der Web-Flow-Schlüssel von GitHub, weil Squash-Merges von GitHub signiert werden. **Ersetzt durch ADR-017 (E-5-149).** |
 | E-5-26 | Wie der Deploy-Agent Container starten darf (Docker-Gruppe, Rootless Docker, Podman), bleibt offen und wird in Sitzung 16 entschieden |
 
 **Fail closed** bedeutet hier: Kein neues Image und keine neue Konfiguration
