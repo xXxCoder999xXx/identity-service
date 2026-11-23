@@ -11,6 +11,13 @@
 # (E-5-114: Ein Fehlschlag aus anderem Grund beweist nichts). Es laeuft in
 # jedem CI-Lauf und ersetzt einen Wegwerf-PR fuer die Formatpruefung.
 #
+# Zusaetzlich (ADR-017, PR 4b):
+#   - Abgleich Bundle-Dateiliste (RELEASE_FILES) <-> Pfadfilter von
+#     release-staging.yml <-> nginx/snippets/, und RELEASE_IMAGE und
+#     predicate-type im Workflow <-> Konstanten der Bibliothek
+#   - RELEASE_FACTS mit jq gegen Gut- und Rot-Faelle (gojq: lokal belegt,
+#     im Release-Workflow bei jedem Lauf)
+#
 # Die Ausgaben der erwarteten Fehlschlaege werden nur gespeichert, nicht
 # gedruckt: Ihre "::error::"-Zeilen wuerden in GitHub Actions sonst als
 # Fehler am Pull Request erscheinen. Gedruckt wird nur bei Abweichung.
@@ -162,6 +169,126 @@ else
   printf '%s\n' "${out}" | sed 's/^::error::/  /'
   failures=$((failures + 1))
 fi
+
+# --- Abgleich: Bundle, Pfadfilter, Konstanten (ADR-017, E-5-155, E-5-159) ---
+# Dateiliste, Pfadfilter des Release-Workflows und die Werte im Workflow
+# stehen an verschiedenen Stellen. Laufen sie auseinander, entsteht Drift:
+# eine Aenderung ohne neue Freigabe oder ein Workflow, der etwas anderes
+# signiert, als der Server erwartet.
+# shellcheck source=lib/release-rules.sh
+. "${here}/lib/release-rules.sh"
+root="${here}/.."
+workflow="${root}/.github/workflows/release-staging.yml"
+
+consistency() {
+  local label="$1" ok="$2" detail="$3"
+  if [ "${ok}" = "ja" ]; then
+    echo "ok   ${label}"
+  else
+    echo "FEHLER ${label}: ${detail}"
+    failures=$((failures + 1))
+  fi
+}
+
+[ -r "${workflow}" ] || fail 2 "Workflow fehlt: ${workflow}"
+
+# Eintraege des Pfadfilters (Zeilen '      - "..."' direkt unter paths:).
+mapfile -t filter < <(awk '
+  /^    paths:/ { inside = 1; next }
+  inside && /^      #/ { next }
+  inside && /^      - "/ { sub(/^      - "/, ""); sub(/".*$/, ""); print; next }
+  inside { exit }
+' "${workflow}")
+
+covered() {
+  local file="$1" pattern
+  for pattern in "${filter[@]}"; do
+    [ "${pattern}" = "${file}" ] && return 0
+    case "${pattern}" in
+      */\*\*) [[ "${file}" == "${pattern%\*\*}"* ]] && return 0 ;;
+    esac
+  done
+  return 1
+}
+
+for file in "${RELEASE_FILES[@]}"; do
+  if [ -f "${root}/${file}" ] && [ ! -L "${root}/${file}" ]; then
+    consistency "Bundle-Datei vorhanden: ${file}" ja ""
+  else
+    consistency "Bundle-Datei vorhanden: ${file}" nein "fehlt, ist ein Link oder keine gewoehnliche Datei"
+  fi
+  if covered "${file}"; then
+    consistency "Pfadfilter deckt ${file}" ja ""
+  else
+    consistency "Pfadfilter deckt ${file}" nein "Aenderung erzeugte keine neue Freigabe (Drift)"
+  fi
+done
+
+# Jede nginx-Snippet-Datei muss ins Bundle: nginx.staging.conf bindet den
+# ganzen Ordner ein.
+for snippet in "${root}"/nginx/snippets/*; do
+  rel="nginx/snippets/${snippet##*/}"
+  listed=nein
+  for file in "${RELEASE_FILES[@]}"; do
+    [ "${file}" = "${rel}" ] && listed=ja
+  done
+  consistency "Snippet im Bundle: ${rel}" "${listed}" "fehlt in RELEASE_FILES"
+done
+
+if grep --quiet --line-regexp --fixed-strings "      RELEASE_IMAGE: ${RELEASE_IMAGE_NAME}" "${workflow}"; then
+  consistency "RELEASE_IMAGE im Workflow = RELEASE_IMAGE_NAME" ja ""
+else
+  consistency "RELEASE_IMAGE im Workflow = RELEASE_IMAGE_NAME" nein "weicht ab oder fehlt"
+fi
+if grep --quiet --line-regexp --fixed-strings "          predicate-type: ${RELEASE_PREDICATE_TYPE}" "${workflow}"; then
+  consistency "predicate-type im Workflow = RELEASE_PREDICATE_TYPE" ja ""
+else
+  consistency "predicate-type im Workflow = RELEASE_PREDICATE_TYPE" nein "weicht ab oder fehlt"
+fi
+
+# --- RELEASE_FACTS mit jq (der Server nutzt gojq; lokal belegt) -------------
+pred="$(jq --compact-output . "${base}")"
+facts_input() { # URI COMMIT DIGEST PREDICATE ANZAHL
+  jq --null-input --compact-output \
+    --argjson uri "$1" --argjson commit "$2" --argjson digest "$3" --argjson pred "$4" --argjson n "$5" '
+    { verificationResult: {
+        signature: { certificate: { runInvocationURI: $uri, sourceRepositoryDigest: $commit } },
+        statement: { subject: [ { name: "x", digest: { sha256: $digest } } ], predicate: $pred } } }
+    | [ limit($n; repeat(.)) ]'
+}
+uri='"https://github.com/xXxCoder999xXx/identity-service/actions/runs/45177231370/attempts/2"'
+commit='"768bbb42c5387682d63087b1ad6be24f494b9aa2"'
+digest='"63a1ae6e173e43cd5a2ff9a9ab817d7da0efa4f1700d36c2dcfe0a94887ed6a8"'
+
+facts_case() { # NAME EXIT GRUND EINGABE
+  local out got=0
+  out="$(printf '%s' "$4" | jq --raw-output "${RELEASE_FACTS}" 2>&1)" || got=$?
+  if { [ "$2" -eq 0 ] && [ "${got}" -eq 0 ]; } || { [ "$2" -ne 0 ] && [ "${got}" -ne 0 ]; }; then
+    if [[ "${out}" == *"$3"* ]]; then
+      echo "ok   Fakten: $1"
+      return
+    fi
+  fi
+  echo "FEHLER Fakten: $1: erwartet Exit $2 mit '$3', erhalten Exit ${got}:"
+  printf '%s\n' "${out}" | sed 's/^/  /'
+  failures=$((failures + 1))
+}
+
+# Erwartete erste vier Zeilen; danach folgen die drei Referenzen.
+good_facts="$(printf 'subject\tsha256:%s\nrun\t45177231370\nattempt\t2\ncommit\t%s' \
+  "$(jq --raw-output . <<<"${digest}")" "$(jq --raw-output . <<<"${commit}")")"
+facts_case "gueltiger Nachweis" 0 "${good_facts}" "$(facts_input "${uri}" "${commit}" "${digest}" "${pred}" 1)"
+facts_case "zwei Nachweise" 5 "genau einen Nachweis, gefunden 2" "$(facts_input "${uri}" "${commit}" "${digest}" "${pred}" 2)"
+facts_case "kein Nachweis" 5 "genau einen Nachweis, gefunden 0" "$(facts_input "${uri}" "${commit}" "${digest}" "${pred}" 0)"
+facts_case "fremdes Repository in runInvocationURI" 5 "runInvocationURI" \
+  "$(facts_input '"https://github.com/evil/identity-service/actions/runs/1/attempts/1"' "${commit}" "${digest}" "${pred}" 1)"
+facts_case "runInvocationURI fehlt" 5 "runInvocationURI" "$(facts_input null "${commit}" "${digest}" "${pred}" 1)"
+facts_case "Commit gekuerzt" 5 "sourceRepositoryDigest" "$(facts_input "${uri}" '"768bbb4"' "${digest}" "${pred}" 1)"
+facts_case "subject ohne Digest" 5 "subject hat keinen sha256-Digest" "$(facts_input "${uri}" "${commit}" '"abc"' "${pred}" 1)"
+facts_case "Predicate production" 5 "environment muss staging sein" \
+  "$(facts_input "${uri}" "${commit}" "${digest}" "$(jq --compact-output '.environment = "production"' <<<"${pred}")" 1)"
+facts_case "Predicate vertauscht" 5 "images.api ist keine Referenz" \
+  "$(facts_input "${uri}" "${commit}" "${digest}" "$(jq --compact-output '.images.api = .images.lego' <<<"${pred}")" 1)"
 
 # Die Referenz fuer api ist unveraendert (Selbstkontrolle der Mutationen).
 [ "$(jq --raw-output '.images.api' "${base}")" = "${api_ref}" ] \

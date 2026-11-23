@@ -169,6 +169,18 @@ attest_ere_literal() {
   printf '%s' "$1" | sed --regexp-extended 's/[][\.*^$()+?{}|]/\\&/g'
 }
 
+# Predicate-Typ fuer die Gegenproben (Erweiterungspunkt, ADR-017). Ohne
+# Aufruf bleibt die Liste leer, und gh nimmt seinen Standard (SLSA-
+# Herkunftsnachweis): Fuer die Image-Einstiege aendert sich nichts. Ein
+# Einstieg fuer einen anderen Nachweis-Typ (Freigabe-Nachweis) setzt ihn
+# hier, damit die Gegenproben "falscher Workflow" und "falscher Branch" am
+# erwarteten Grund scheitern und nicht schon am fehlenden Typ.
+ATTEST_COUNTER_PREDICATE_OPTS=()
+attest_set_counter_predicate_type() {
+  [ -n "$1" ] || attest_fail 2 "Predicate-Typ fuer die Gegenproben ist leer."
+  ATTEST_COUNTER_PREDICATE_OPTS=(--predicate-type "$1")
+}
+
 # Die Gegenproben schuetzen vor einem Pruefwerkzeug, das alles durchwinkt.
 # Das fremde Image (Basis des nginx-Images) hat gar keinen Nachweis. Die
 # beiden anderen pruefen das EIGENE Image und aendern je genau eine
@@ -258,7 +270,7 @@ attest_reject_wrong_workflow() {
   attest_verify_must_fail "eigenes Image, falscher Workflow (${ATTEST_WRONG_WORKFLOW_FILE}, ${ATTEST_SOURCE_LABEL})" \
     'Error: verifying with issuer "[^"]+"' "${ATTEST_SUBJECT}" \
     --repo "${ATTEST_REPO}" --signer-workflow "${ATTEST_WRONG_WORKFLOW}" \
-    --source-ref "${ATTEST_BRANCH}" --deny-self-hosted-runners "${ATTEST_SOURCE_OPTS[@]}"
+    --source-ref "${ATTEST_BRANCH}" --deny-self-hosted-runners "${ATTEST_SOURCE_OPTS[@]}" "${ATTEST_COUNTER_PREDICATE_OPTS[@]}"
 }
 
 # Erwartet (beide Quellen): gh nennt genau die geaenderte Bedingung (falscher
@@ -270,5 +282,5 @@ attest_reject_wrong_branch() {
   reason="Error: expected SourceRepositoryRef to be $(attest_ere_literal "${wrong_branch}"), got $(attest_ere_literal "${ATTEST_BRANCH}")"
   attest_verify_must_fail "eigenes Image, falscher Branch (${ATTEST_SOURCE_LABEL})" "${reason}" "${ATTEST_SUBJECT}" \
     --repo "${ATTEST_REPO}" --signer-workflow "${ATTEST_WORKFLOW}" \
-    --source-ref "${wrong_branch}" --deny-self-hosted-runners "${ATTEST_SOURCE_OPTS[@]}"
+    --source-ref "${wrong_branch}" --deny-self-hosted-runners "${ATTEST_SOURCE_OPTS[@]}" "${ATTEST_COUNTER_PREDICATE_OPTS[@]}"
 }
