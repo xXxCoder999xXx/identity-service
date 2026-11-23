@@ -117,6 +117,13 @@ jobs:
         # erwarteten Grund ablehnt (E-5-114) und ohne jq nicht grün wird.
         # Ersetzt einen Wegwerf-PR für die Formatprüfung.
 
+      - name: Hochlade-Skript prüfen (docker-Ersatz)
+        run: bash scripts/test-push-image.sh
+        # scripts/push-image.sh läuft echt nur in publish*.yml, also erst nach
+        # dem Merge und ohne Pflicht-Check. Der Test spielt docker nach und
+        # prüft jeden Fehlerpfad mit erwartetem Grund (E-5-114), ohne
+        # Registry und ohne Token.
+
       - name: Image bauen (ohne Push, ohne Cache)
         run: docker build --pull --tag identity-service-api:ci .
         # Beweist bei jedem Lauf die Kopplung global.json <-> Build-Stage-Digest:
