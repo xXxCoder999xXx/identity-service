@@ -176,6 +176,15 @@ jobs:
         # Workflow" mit publish-lego.yml: Ein Nachweis für die API darf nur
         # von diesem Workflow stammen.
 
+      - name: Server-Prüfung nachstellen (nur Registry, ohne Token)
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: bash scripts/verify-attestations-server.sh "${IMAGE_NAME}@${DIGEST}" docker/nginx/Dockerfile
+        # E-5-141: Der Server-Einstieg läuft sonst nur auf dem Server und
+        # bräche dort still, wenn sich Bibliothek oder gh ändern. Bewusst
+        # ohne GH_TOKEN: Der Einstieg setzt selbst einen Platzhalter
+        # (E-5-136); die Registry-Anmeldung kommt aus dem docker login oben.
+
       # --- 6. Sichtbarkeit ---------------------------------------------------
       - name: Paket anonym nicht lesbar (mit Gegenprobe)
         run: bash scripts/verify-package-private.sh "${IMAGE_NAME}"

@@ -213,6 +213,12 @@ jobs:
         # Gegenprobe "falscher Workflow" mit publish.yml: Ein Nachweis für
         # nginx darf nur von diesem Workflow stammen (E-5-78).
 
+      - name: Server-Prüfung nachstellen (nur Registry, ohne Token)
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: bash scripts/verify-attestations-server.sh "${IMAGE_NAME}@${DIGEST}" docker/nginx/Dockerfile
+        # E-5-141, Begründung in publish.yml.
+
       # --- 6. Sichtbarkeit ---------------------------------------------------
       - name: Paket anonym nicht lesbar (mit Gegenprobe)
         run: bash scripts/verify-package-private.sh "${IMAGE_NAME}"

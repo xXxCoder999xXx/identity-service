@@ -6,10 +6,14 @@
 #
 # Warum eine Bibliothek: Die Regeln (welches Repository, welcher Workflow,
 # welcher Branch, welcher Runner, welche Gegenproben) gelten in der CI und
-# spaeter auf dem Server. Sie stehen deshalb an EINER Stelle. Der Einstieg
+# auf dem Server. Sie stehen deshalb an EINER Stelle. Der Einstieg
 # entscheidet nur, wie Meldungen aussehen und welche Pruefungen er aufruft
 # (Open/Closed: eine neue Umgebung ist ein neuer Einstieg, keine Aenderung
 # hier).
+#
+# Einstiege:
+#   scripts/verify-attestations.sh         CI (GitHub-API und Registry)
+#   scripts/verify-attestations-server.sh  Server (nur Registry, E-5-137)
 #
 # Die Bibliothek liest keine Umgebungsvariablen und wechselt kein
 # Verzeichnis. Alle Werte kommen als Parameter von attest_init.
