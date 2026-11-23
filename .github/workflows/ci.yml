@@ -103,6 +103,20 @@ jobs:
         with:
           persist-credentials: false  # Begründung siehe Job "Build & Test"
 
+      - name: Staging-Freigabe prüfen (Format)
+        run: bash scripts/verify-release-file.sh deploy/staging.json
+        # deploy/staging.json IST die Freigabe für Staging (ADR-017). Ein
+        # Formatfehler macht den Pull Request rot, nicht erst den
+        # Release-Workflow nach dem Merge. Regeln und Exit-Codes stehen im
+        # Skriptkopf und in scripts/lib/release-rules.sh. Früh im Job, weil
+        # billig: kein Build nötig, schnelle Rückmeldung.
+
+      - name: Staging-Freigabe prüfen (Rot-Fälle)
+        run: bash scripts/test-release-file.sh
+        # Beweist bei jedem Lauf, dass die Prüfung kaputte Freigaben am
+        # erwarteten Grund ablehnt (E-5-114) und ohne jq nicht grün wird.
+        # Ersetzt einen Wegwerf-PR für die Formatprüfung.
+
       - name: Image bauen (ohne Push, ohne Cache)
         run: docker build --pull --tag identity-service-api:ci .
         # Beweist bei jedem Lauf die Kopplung global.json <-> Build-Stage-Digest:

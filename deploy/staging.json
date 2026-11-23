@@ -1,0 +1,9 @@
+{
+  "schema": 1,
+  "environment": "staging",
+  "images": {
+    "api": "ghcr.io/xxxcoder999xxx/identity-service@sha256:63a1ae6e173e43cd5a2ff9a9ab817d7da0efa4f1700d36c2dcfe0a94887ed6a8",
+    "nginx": "ghcr.io/xxxcoder999xxx/identity-service-nginx@sha256:df0163508f6836f314c81014234f54b69385b4148735c48417e99b76d9c7e629",
+    "lego": "ghcr.io/xxxcoder999xxx/identity-service-lego@sha256:55b687f90172014478983f66591ee62b634cf36d081ccb9205348ef6dadcf612"
+  }
+}
