@@ -25,7 +25,7 @@ services:
     # Per Digest gepinnt, der Tag dient der Lesbarkeit und Dependabot.
     # Bewusst das Container-Image und keine GitHub Action: ein Action-SHA pinnt
     # nur den Wrapper, nicht das Werkzeug dahinter (ADR-009).
-    image: ghcr.io/anchore/grype:v0.121.3@sha256:13113eeceab017260370cf540e1d25442c59665fd07d1b09b66d63bb0c282887
+    image: ghcr.io/anchore/grype:v0.122.1@sha256:661583704a253c0448ed63998b5ea2cd9d5a76ee71eedc4aed439b8ce3e93a1c
     # Das Image legt keinen Nutzer fest, der Prozess laeuft als root im
     # Container. Deshalb dieselbe Haertung wie im Stack - und vor allem KEIN
     # Zugriff auf Docker: der Scanner bekommt das Image nur als Datei.
