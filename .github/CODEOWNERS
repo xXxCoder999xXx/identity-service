@@ -48,6 +48,10 @@
 # (E-5-80). Ordnerebene, damit jedes künftige Image erfasst ist (E-5-84).
 /docker/                    @xXxCoder999xXx
 
+# Staging-Freigabe (ADR-017, E-5-153): deploy/staging.json legt fest, welche
+# Images auf Staging laufen. Eine Änderung hier IST ein Deploy.
+/deploy/                    @xXxCoder999xXx
+
 # Agenten-Harness: legt fest, was der KI-Agent im Repository darf (Regeln,
 # Berechtigungen, Hooks, Skills). Eine unbemerkte Änderung hier hebelt die
 # Grenzen aus CLAUDE.md Abschnitt 6 aus (6.3.4).
