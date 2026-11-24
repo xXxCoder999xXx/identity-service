@@ -28,6 +28,13 @@ readonly EXPECTED_REPO_ID="1296648545"
 readonly EXPECTED_OWNER_ID="291064355"
 readonly REGISTRY_PREFIX="ghcr.io/xxxcoder999xxx"
 
+# Bekannt oeffentliches Paket fuer die Gegenprobe von
+# scripts/verify-package-private.sh auf dem Server (E-5-171). Der Server hat
+# kein compose.scan.yaml; die CI nimmt weiter den gepinnten Scanner von dort.
+# Dasselbe Paket wie in der CI, gemessen am 2026-11-24: anonym HTTP 200. Wird
+# es privat oder geloescht, endet die Pruefung mit Exit 4 (fail closed).
+readonly PUBLIC_COUNTER_PACKAGE="ghcr.io/anchore/grype"
+
 # Mindestversion von gh (E-5-140): Die erwarteten Fehlermeldungen der
 # Gegenproben sind an 2.102.0 und 2.103.3 belegt; die Advisories vom
 # 2026-09-30 (GHSA-wjmr-j3rp-mh2g, GHSA-4mq3-hpgx-9cx8) betreffen gh
