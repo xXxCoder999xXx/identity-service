@@ -25,7 +25,8 @@
 #
 # Ablauf:
 #   0. Parameter, Umgebung, Ping-URL; flock auf STATE_DIR/.deploy.lock.
-#   1. Token aus dem Credential, Zeilenende entfernen, Form pruefen;
+#   1. Docker rootless (E-5-112), erst dann das Token: aus dem Credential,
+#      Zeilenende entfernen, Form pruefen;
 #      docker login --password-stdin in DOCKER_CONFIG unter
 #      RUNTIME_DIRECTORY (E-5-174).
 #   2. Vier Pakete anonym nicht lesbar (E-5-115, E-5-171).
@@ -220,6 +221,14 @@ work="$(mktemp -d)"
 
 # --- 1. Anmeldung an der Registry ----------------------------------------------
 echo "== Anmeldung"
+# Erst pruefen, wem das Token gleich gegeben wird (E-5-112): docker login
+# reicht es an den Daemon hinter DOCKER_HOST weiter. Nur der rootless Daemon
+# von deploy darf es bekommen. fetch-release.sh prueft spaeter noch einmal.
+security="$(timeout 30 docker info --format '{{.SecurityOptions}}')" \
+  || fail 2 "docker info gescheitert (Daemon nicht erreichbar?)."
+[[ " ${security//[\[\]]/ } " == *" name=rootless "* ]] \
+  || fail 2 "Docker laeuft nicht rootless: ${security}"
+echo "docker rootless"
 token_file="${CREDENTIALS_DIRECTORY}/ghcr-token"
 [ -r "${token_file}" ] || fail 2 "Credential ghcr-token nicht lesbar."
 # $(...) entfernt abschliessende LF; ein CR (Datei aus Windows) einzeln.

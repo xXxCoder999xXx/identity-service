@@ -1,0 +1,106 @@
+# Pull-Deploy auf Staging (ADR-017, PR 4d-3b): prueft die Freigabe und rollt
+# sie aus (scripts/deploy-staging.sh). Gestartet von
+# identity-service-deploy.timer.
+# Ablageort: /etc/systemd/system, root:root, 0644.
+#
+# System-Unit mit User=deploy (E-5-112): rootless Docker des Deploy-Benutzers
+# (ADR-012), Unit und Skripte root-eigen und fuer deploy nicht beschreibbar.
+#
+# Installation nach E-5-56 und E-5-99 (nur von main, Signatur des
+# Merge-Commits pruefen, scp, sha256sum -c && install, Hash danach), Zielorte
+# nach E-5-117:
+#   /usr/local/lib/identity-service/                 root:root 0755
+#     deploy-staging.sh fetch-release.sh verify-release.sh
+#     verify-attestations-server.sh verify-package-private.sh     0755
+#     nginx.Dockerfile (= docker/nginx/Dockerfile, E-5-177)       0644
+#   /usr/local/lib/identity-service/lib/             root:root 0755
+#     release-rules.sh release-state.sh registry-only.sh
+#     attestation-rules.sh                                        0644
+#   /etc/credstore/identity-service-deploy.ghcr-token  root 0600 (E-5-168)
+#   /etc/credstore/identity-service-deploy.ping-url    root 0600 (ADR-013)
+#   /etc/identity-service/deploy.env                   root 0644
+#     genau eine Zeile GHCR_USERNAME=<Maschinenkonto>; der Name steht nicht
+#     im Repository (wie Domain und Hostnamen, ADR-004)
+#   /etc/identity-service/deploy-first                 root 0644, leer
+#     nur fuer den ersten Deploy, danach loeschen (E-5-147)
+#
+# Fehlt ein Credential oder deploy.env, startet systemd die Unit nicht; der
+# ausbleibende Ping alarmiert (fail closed, ADR-013).
+#
+# Sandbox (E-5-118, E-5-134, E-5-176): Der Client bekommt keine Capabilities,
+# sieht vom Home nur den Docker-Socket und schreibt nur in seine drei
+# Verzeichnisse. Grenze: Das begrenzt den Docker-Client, nicht den Daemon.
+# Wer den Socket hat, hat die Rechte von deploy (rootless: nicht root).
+#
+# StateDirectoryMode=0700 (Sitzung 33): systemd legt StateDirectory selbst an;
+# die UMask wirkt darauf nicht. Die Container lesen ihre Dateien ueber
+# Bind-Mounts, die der Daemon als deploy einhaengt; die Rechte der Ordner
+# darueber spielen fuer sie keine Rolle, nur die der Dateien (0644, setzt
+# fetch-release.sh). Beim ersten echten compose up zu messen; scheitert nginx
+# am Lesen, 0711 und Nachtrag zu ADR-017.
+[Unit]
+Description=Staging: Freigabe pruefen und ausrollen (ADR-017)
+Wants=network-online.target
+# Der rootless Daemon laeuft im Benutzer-Manager von deploy (Linger, ADR-012).
+# Ohne Socket scheitert BindPaths und die Unit startet nicht (fail closed);
+# die Ordnung vermeidet das nur kurz nach dem Booten.
+After=network-online.target user@1001.service
+
+[Service]
+Type=oneshot
+User=deploy
+Group=deploy
+ExecStart=/usr/local/lib/identity-service/deploy-staging.sh /var/lib/identity-service-deploy /etc/identity-service/deploy-first /usr/local/lib/identity-service/nginx.Dockerfile
+LoadCredential=ghcr-token:/etc/credstore/identity-service-deploy.ghcr-token
+LoadCredential=ping-url:/etc/credstore/identity-service-deploy.ping-url
+EnvironmentFile=/etc/identity-service/deploy.env
+Environment=STAGING_SERVER_NAME_FILE=/etc/identity-service/server_name.conf
+Environment=STAGING_CA_DIR=/etc/identity-service/ca
+Environment=STAGING_API_CERT_DIR=/etc/identity-service/api-tls
+Environment=DOCKER_HOST=unix:///run/user/1001/docker.sock
+# Kein Home: alles, was Werkzeuge ablegen wollen, landet im RuntimeDirectory
+# und verschwindet mit dem Lauf. Der TUF-Zwischenspeicher bleibt (E-5-134).
+Environment=HOME=%t/identity-service-deploy
+Environment=XDG_CONFIG_HOME=%t/identity-service-deploy/config
+Environment=XDG_CACHE_HOME=%C/identity-service-deploy
+StateDirectory=identity-service-deploy identity-service-deploy/releases
+StateDirectoryMode=0700
+RuntimeDirectory=identity-service-deploy
+RuntimeDirectoryMode=0700
+CacheDirectory=identity-service-deploy
+CacheDirectoryMode=0700
+UMask=0077
+# Obergrenze fuer den ganzen Lauf. Sie liegt ueber der Summe der Timeouts im
+# Skript (Login, Pulls, compose up, Health, Rueckweg: rund 30 Minuten), damit
+# systemd nie einen Rueckweg abbricht. Die gh-Aufrufe der Pruefskripte haben
+# noch kein eigenes Timeout (offener Punkt); fuer sie gilt nur diese Grenze.
+TimeoutStartSec=45min
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=tmpfs
+# Schluessel der CA und der Credstore sind fuer den Lauf unsichtbar, nicht nur
+# durch Dateirechte geschuetzt. LoadCredential liest PID 1 vor der Sandbox.
+InaccessiblePaths=/etc/identity-service/ca-private /etc/credstore
+BindPaths=/run/user/1001/docker.sock
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+# Netzziele (E-5-176): vorerst nur die Adressfamilien; Egress-Proxy oder
+# nftables-Sets spaeter per ADR. Segmentierung ist Mauer, kein Ausweis.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallFilter=@system-service
+# Ein gesperrter Aufruf scheitert mit EPERM, statt den Prozess per SIGSYS zu
+# beenden: So laeuft der EXIT-Trap des Skripts und der /fail-Ping geht raus.
+SystemCallErrorNumber=EPERM
+SystemCallArchitectures=native
