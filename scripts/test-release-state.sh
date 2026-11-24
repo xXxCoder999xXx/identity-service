@@ -229,7 +229,8 @@ no_switch="${work}/kein-schalter"
 # Frischer Ausgangszustand je Fall.
 reset() {
   rm -rf -- "${work}/rel" "${work}/state"
-  mkdir "${work}/rel"
+  # Rechte ausdruecklich, nicht ueber die umask des Runners (E-5-170).
+  mkdir "${work}/rel" && { chmod 0700 "${work}/rel" 2>/dev/null || true; }
   make_bundle
   export FAKE_BUNDLE="${work}/bundle"
   export FAKE_FACTS
@@ -486,7 +487,26 @@ got=0
 PATH="${work}/bin:${PATH}" bash "${inst}/fetch-release.sh" "${work}/state" "${no_switch}" "${work}/rel" "${work}/Dockerfile" \
   >"${work}/out" 2>"${work}/err" || got=$?
 if [ "${got}" -eq 2 ] && grep -q "RELEASES_DIR fehlt" "${work}/err"; then ok "Releases-Ordner fehlt"; else bad "Releases-Ordner fehlt: Exit ${got}"; fi
-mkdir "${work}/rel"
+mkdir "${work}/rel" && { chmod 0700 "${work}/rel" 2>/dev/null || true; }
+
+# Schreibrechte auf RELEASES_DIR (E-5-170). Unter Git Bash wirkt chmod auf
+# Ordner nicht; dann werden die Faelle gezaehlt uebersprungen.
+# mode_case LABEL MODUS CODE GRUND ENTSCHEIDUNG
+mode_case() {
+  deploy_case
+  chmod "$2" "${work}/rel" 2>/dev/null || true
+  if [ "$(stat -c '%a' "${work}/rel")" != "${2#0}" ]; then
+    echo "SKIP $1 (chmod wirkt auf diesem Dateisystem nicht)"
+    skipped=$((skipped + 1))
+    return 0
+  fi
+  fetch "$1" "$3" "$4" "$5" "${work}/state" "${no_switch}"
+}
+mode_case "Releases-Ordner 0775 (Gruppe schreibbar)" 0775 2 "fuer Gruppe oder andere schreibbar (Modus 775)" -
+mode_case "Releases-Ordner 0757 (andere schreibbar)" 0757 2 "fuer Gruppe oder andere schreibbar (Modus 757)" -
+mode_case "Releases-Ordner 1777 (wie /tmp)" 1777 2 "fuer Gruppe oder andere schreibbar (Modus 1777)" -
+mode_case "Releases-Ordner 0755 (lesbar fuer alle)" 0755 0 "" deploy
+chmod 0700 "${work}/rel" 2>/dev/null || true
 
 # docker fehlt: Exit 2, nie 0 (CLAUDE.md Abschnitt 7). Die uebrigen
 # Werkzeuge bleiben erreichbar, nur docker nicht.
