@@ -133,6 +133,14 @@ jobs:
         # Datei oder Links brauchen, dürfen hier nicht übersprungen werden
         # (CI=true macht das rot).
 
+      - name: Prüfung der Paket-Sichtbarkeit prüfen (curl-Ersatz)
+        run: bash scripts/test-package-private.sh
+        # scripts/verify-package-private.sh läuft in allen publish*.yml, in
+        # release-staging.yml und auf dem Server (E-5-115, E-5-171). Der Test
+        # spielt den Token-Endpunkt der Registry nach (privat, öffentlich,
+        # nicht vorhanden, nicht erreichbar) und prüft beide Wege für das
+        # Vergleichspaket, ohne Netz und ohne Token (E-5-114).
+
       - name: Image bauen (ohne Push, ohne Cache)
         run: docker build --pull --tag identity-service-api:ci .
         # Beweist bei jedem Lauf die Kopplung global.json <-> Build-Stage-Digest:
