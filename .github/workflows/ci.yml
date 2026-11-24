@@ -141,6 +141,15 @@ jobs:
         # nicht vorhanden, nicht erreichbar) und prüft beide Wege für das
         # Vergleichspaket, ohne Netz und ohne Token (E-5-114).
 
+      - name: Deploy-Skript prüfen (Ersatz)
+        run: bash scripts/test-deploy-staging.sh
+        # scripts/deploy-staging.sh läuft echt nur auf dem Server (ADR-017,
+        # PR 4d-3a). Der Test prüft Reihenfolge, Weitergabe der Exit-Codes,
+        # Punkt ohne Wiederkehr, Rückweg, current und Zustand mit Ersatz für
+        # docker, curl, flock und die Prüfskripte (E-5-114). Nach jedem Fall:
+        # Token in keiner Ausgabe, DOCKER_CONFIG entfernt. Fälle mit Links
+        # dürfen hier nicht übersprungen werden (CI=true macht das rot).
+
       - name: Image bauen (ohne Push, ohne Cache)
         run: docker build --pull --tag identity-service-api:ci .
         # Beweist bei jedem Lauf die Kopplung global.json <-> Build-Stage-Digest:
