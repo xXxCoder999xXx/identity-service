@@ -15,6 +15,7 @@ Ziel: ohne Einfügen von Hand dort weitermachen, wo die letzte Sitzung aufgehör
 4. **Roadmap übernehmen.** Den Abschnitt „Roadmap Sitzung NN+1" des Berichts als Tagesordnung verwenden. Begonnen wird beim ersten Punkt.
 5. **Auslöser und Gates.** Prüfen, ob der erste Roadmap-Punkt ein zurückgestelltes Thema aus CLAUDE.md Abschnitt 8 auslöst oder ein Sicherheits-Gate berührt, und das ungefragt melden.
 6. **Aktualität.** Enthält der erste Roadmap-Punkt eine sicherheitsrelevante Technologie-, Bibliotheks- oder Werkzeugentscheidung, zuerst die Recherche nach CLAUDE.md Abschnitt 1 („Aktualität") durchführen. Digests, Tags, Versionen und Pins stammen aus Registry bzw. Primär-Repo.
+7. **Frühere Entscheidungen.** Für den ersten Roadmap-Punkt den Skill `entscheidungen-suchen` anwenden, bevor ein Konzept entsteht. Der Bericht nennt oft nur einige Codes; die übrigen stehen in älteren Berichten und ADRs. Dasselbe gilt in der Sitzung für jeden weiteren Punkt und jede neue Frage.
 
 ## Ausgabe an den Nutzer
 
@@ -25,6 +26,7 @@ Kurz und in dieser Reihenfolge:
 - Offene Punkte aus dem Bericht, die diesen Schritt betreffen.
 - Konzepte, die vor dem Code zu verstehen sind.
 - Ausgelöste Themen oder Gates, falls vorhanden.
+- Frühere Entscheidungen zum ersten Punkt (Tabelle aus `entscheidungen-suchen`) oder „keine gefunden“ mit den Suchbegriffen.
 
 Danach mit dem Konzept des ersten Roadmap-Punkts beginnen. Es gilt der Arbeitsmodus aus CLAUDE.md Abschnitt 1: erst Konzept, Optionen und Empfehlung, Code erst nach ausdrücklicher Freigabe.
 
