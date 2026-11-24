@@ -124,6 +124,15 @@ jobs:
         # prüft jeden Fehlerpfad mit erwartetem Grund (E-5-114), ohne
         # Registry und ohne Token.
 
+      - name: Downgrade-Regel und Server-Einstieg prüfen (Ersatz)
+        run: bash scripts/test-release-state.sh
+        # scripts/fetch-release.sh läuft echt nur auf dem Server (ADR-017,
+        # PR 4c). Der Test prüft die Tabelle der Downgrade-Regel, das Format
+        # der Zustandsdatei und jeden Fehlerpfad des Einstiegs mit Ersatz für
+        # docker und verify-release.sh (E-5-114). Fälle, die eine root-eigene
+        # Datei oder Links brauchen, dürfen hier nicht übersprungen werden
+        # (CI=true macht das rot).
+
       - name: Image bauen (ohne Push, ohne Cache)
         run: docker build --pull --tag identity-service-api:ci .
         # Beweist bei jedem Lauf die Kopplung global.json <-> Build-Stage-Digest:
