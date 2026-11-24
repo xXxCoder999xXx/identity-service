@@ -12,9 +12,10 @@
 # Ausstellungs-Skript bleibt so ohne Netz und ohne Docker.
 #
 #   Exit des Skripts   Wirkung
-#   10                 ok-Ping
+#   10                 ok-Ping; steht ein Neustart aus (.restart-pending),
+#                      zuerst nachholen, scheitert er wieder: /fail
 #   0                  API neu starten, dann ok-Ping; scheitert der Neustart:
-#                      Ping auf /fail
+#                      Merker .restart-pending anlegen, Ping auf /fail
 #   alles andere       Ping auf /fail mit dem Exit-Code
 #
 # Die Ping-URL kommt per LoadCredential und steht nie in einer Kommandozeile
@@ -40,12 +41,30 @@ ping_hc() {
     | curl -fsS -m 10 --retry 3 --retry-max-time 30 -o /dev/null -K - --data-binary "$2"
 }
 
-# Neustart der API nach einer Erneuerung. Auf Staging laeuft noch kein
-# Stack: Projektname und Weg zu Docker von deploy legt erst der Pull-Deploy
-# fest. Bis dahin meldet der Zweig einen Fehler, statt still nichts zu tun.
-# Frist: erste Erneuerung am 27.12.2026.
+# Neustart der API nach einer Erneuerung (E-5-97) ueber eine eigene Unit mit
+# User=deploy (E-5-120, E-5-178). systemctl start wartet, bis der oneshot
+# fertig ist, und liefert ungleich 0, wenn er scheitert: kein API-Container,
+# Neustart oder Health rot, Sperre nicht erhalten. Die Sandbox dieser Unit
+# waechst dafuer nicht (gemessen in Sitzung 32).
 restart_api() {
-  return 1
+  systemctl --no-ask-password start identity-service-api-restart.service
+}
+
+# Ausstehender Neustart (Sitzung 33): Scheitert der Neustart nach einer
+# Erneuerung, liefert der naechste Lauf Exit 10 ("noch gueltig") - ohne
+# Merker gaebe es keinen zweiten Versuch, der ok-Ping loeschte den Alarm,
+# und die API zeigte das alte Zertifikat bis zu dessen Ablauf. Der Merker
+# liegt im Ordner der API-Zertifikate, dem einzigen, in den diese Unit
+# schreiben darf (E-5-102, E-5-178); die API liest nur ihre festen Dateien.
+# Ordner = drittes Argument, wie es auch issue-api-certificate.sh bekommt.
+api_dir="${3-}"
+pending=""
+case "${api_dir}" in
+  /*) [ -d "${api_dir}" ] && pending="${api_dir}/.restart-pending" ;;
+esac
+
+mark_pending() {
+  [ -n "${pending}" ] && (umask 077 && : >"${pending}")
 }
 
 "${issue}" "$@"
@@ -54,13 +73,30 @@ rc=$?
 problem=""
 case "${rc}" in
   10)
-    log_info "Zertifikat noch gueltig"
+    if [ -n "${pending}" ] && [ -e "${pending}" ]; then
+      if restart_api; then
+        rm -f -- "${pending}"
+        log_info "Zertifikat noch gueltig, ausstehender API-Neustart nachgeholt"
+      else
+        problem="API-Neustart nach Erneuerung weiter ausstehend"
+      fi
+    else
+      log_info "Zertifikat noch gueltig"
+    fi
     ;;
   0)
+    # Merker VOR dem Neustart: Bricht systemd die Unit waehrenddessen ab,
+    # bleibt er stehen, und der naechste Lauf holt den Neustart nach.
+    marked="no"
+    if mark_pending; then marked="yes"; fi
     if restart_api; then
+      [ -z "${pending}" ] || rm -f -- "${pending}"
       log_info "Zertifikat erneuert, API neu gestartet"
+      [ "${marked}" = "yes" ] || problem="Zertifikat erneuert, API neu gestartet; Merker war nicht anlegbar"
+    elif [ "${marked}" = "yes" ]; then
+      problem="Zertifikat erneuert, API-Neustart gescheitert; wird beim naechsten Lauf wiederholt"
     else
-      problem="Zertifikat erneuert, API-Neustart nicht eingerichtet oder gescheitert"
+      problem="Zertifikat erneuert, API-Neustart gescheitert; Merker nicht anlegbar, kein zweiter Versuch"
     fi
     ;;
   *)

@@ -35,7 +35,7 @@ fail() {
 
 here="${BASH_SOURCE[0]%/*}"
 [ "${here}" != "${BASH_SOURCE[0]}" ] || here="."
-for f in deploy-staging.sh lib/release-rules.sh lib/release-state.sh lib/registry-only.sh; do
+for f in deploy-staging.sh lib/release-rules.sh lib/release-state.sh lib/registry-only.sh lib/staging-runtime.sh; do
   [ -r "${here}/${f}" ] || fail 2 "Datei fehlt: ${here}/${f}"
 done
 # shellcheck source=lib/release-state.sh
@@ -81,7 +81,7 @@ ping_url="https://hc-ping.example/abc-123"
 inst="${work}/inst"
 mkdir -p "${inst}/lib" "${work}/bin"
 cp "${here}/deploy-staging.sh" "${inst}/"
-cp "${here}/lib/release-rules.sh" "${here}/lib/release-state.sh" "${here}/lib/registry-only.sh" "${inst}/lib/"
+cp "${here}/lib/release-rules.sh" "${here}/lib/release-state.sh" "${here}/lib/registry-only.sh" "${here}/lib/staging-runtime.sh" "${inst}/lib/"
 export FAKE_LOG="${work}/calls.log"
 export FAKE_RUNNING="${work}/running"
 export FAKE_LOGIN_STDIN="${work}/login.stdin"
@@ -344,9 +344,15 @@ echo "== Sperre und Ping"
 reset
 with_current
 export FAKE_FLOCK_EXIT=1
-deploy "Sperre belegt" 0 "Ein anderer Deploy laeuft"
+deploy "Sperre belegt" 0 "Sperre belegt (Deploy oder API-Neustart)"
 hasnt "Sperre: keine Freigabe geholt" "fetch "
 hasnt "Sperre: kein Ping" "ping "
+
+reset
+with_current
+mkdir "${sd}/.deploy.lock"
+deploy "Sperrdatei nicht anlegbar" 2 "Sperrdatei nicht anlegbar"
+hasnt "Sperrdatei rot: keine Freigabe geholt" "fetch "
 
 reset
 with_current

@@ -10,8 +10,14 @@
 # API-Zertifikate. Der CA-Schluessel ist hier nur lesbar; eine Erneuerung
 # kann die CA nicht veraendern. Rechte nur fuer chown/chmod auf den Schluessel
 # der API und zum Lesen des vorhandenen Schluessels (gehoert der API-UID).
-# Der spaetere API-Neustart (Pull-Deploy) braucht vermutlich mehr Rechte; die
-# Sandbox wird dann gezielt erweitert, nicht vorab.
+# Der API-Neustart laeuft ueber identity-service-api-restart.service; dafuer
+# braucht diese Unit keine weiteren Rechte (E-5-120 gemessen, E-5-178).
+#
+# TimeoutStartSec 60 Minuten: systemctl start der Restart-Unit wartet auf
+# einen laufenden Deploy (bis zu 45 Minuten) und dessen Neustart. Mit 2
+# Minuten braeche systemd diese Unit dann ab. Ein gescheiterter Neustart
+# hinterlaesst api-tls/.restart-pending; der naechste Lauf holt ihn nach
+# (Sitzung 33).
 [Unit]
 Description=Zertifikat der API fuer Staging pruefen und erneuern (E-5-97)
 Wants=network-online.target
@@ -21,7 +27,7 @@ After=network-online.target
 Type=oneshot
 ExecStart=/usr/local/sbin/renew-api-certificate.sh /etc/identity-service/ca-private /etc/identity-service/ca /etc/identity-service/api-tls 167189
 LoadCredential=ping-url:/etc/credstore/identity-service-api-cert.ping-url
-TimeoutStartSec=2min
+TimeoutStartSec=60min
 NoNewPrivileges=yes
 ProtectSystem=strict
 ReadWritePaths=/etc/identity-service/api-tls

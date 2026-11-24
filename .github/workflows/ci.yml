@@ -150,6 +150,20 @@ jobs:
         # Token in keiner Ausgabe, DOCKER_CONFIG entfernt. Fälle mit Links
         # dürfen hier nicht übersprungen werden (CI=true macht das rot).
 
+      - name: API-Neustart prüfen (Ersatz)
+        run: bash scripts/test-restart-api.sh
+        # scripts/restart-api.sh läuft echt erst bei der ersten Erneuerung
+        # des API-Zertifikats (ADR-017, PR 4d-3c). Der Test prüft Sperre,
+        # Auswahl genau eines API-Containers, Neustart und Health mit Ersatz
+        # für docker, curl und flock (E-5-114).
+
+      - name: Zertifikats-Hülle prüfen (Ersatz)
+        run: bash scripts/test-renew-api-certificate.sh
+        # scripts/renew-api-certificate.sh läuft täglich auf dem Server
+        # (E-5-97). Der Test prüft Neustart nach Erneuerung, Merker für einen
+        # gescheiterten Neustart und das Nachholen am nächsten Tag sowie die
+        # Pings an den Totmannschalter (E-5-101, E-5-114).
+
       - name: Image bauen (ohne Push, ohne Cache)
         run: docker build --pull --tag identity-service-api:ci .
         # Beweist bei jedem Lauf die Kopplung global.json <-> Build-Stage-Digest:
