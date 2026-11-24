@@ -14,7 +14,8 @@
 # Ablauf:
 #   0. Voraussetzungen: nicht als root, docker vorhanden und rootless,
 #      Erst-Schalter (falls vorhanden) root-eigen und fuer uns nicht
-#      schreibbar, Releases-Ordner gehoert uns und ist kein Link.
+#      schreibbar, Releases-Ordner gehoert uns, ist kein Link und ist fuer
+#      Gruppe und andere nicht schreibbar (E-5-170).
 #   1. Zustand lesen (fehlt / gueltig / ungueltig). Kein Netz.
 #   2. verify-release.sh per Tag staging: Nachweis, Fakten, Gegenproben. Ab
 #      hier gilt nur der verifizierte Digest (subject).
@@ -110,6 +111,14 @@ echo "Erst-Schalter: ${switch}"
 [ -d "${releases_dir}" ] || fail 2 "RELEASES_DIR fehlt: ${releases_dir}"
 dir_owner="$(stat -c '%u' -- "${releases_dir}")" || fail 2 "Eigentuemer von RELEASES_DIR nicht lesbar."
 [ "${dir_owner}" = "$(id -u)" ] || fail 2 "RELEASES_DIR gehoert nicht diesem Benutzer: ${releases_dir}"
+# Wer in RELEASES_DIR schreiben darf, kann releases/<commit> vorab anlegen
+# (E-5-170). Mit ACL zeigen die Gruppen-Bits die Maske; jedes ACL-Recht ist
+# durch sie begrenzt, die Pruefung auf 020 deckt also auch ACLs ab. Erst
+# Regex, dann Arithmetik (E-5-165).
+dir_mode="$(stat -c '%a' -- "${releases_dir}")" || fail 2 "Rechte von RELEASES_DIR nicht lesbar."
+[[ "${dir_mode}" =~ ^[0-7]{3,4}$ ]] || fail 2 "Rechte von RELEASES_DIR unerwartet: '${dir_mode}'"
+(( (8#${dir_mode} & 8#022) == 0 )) \
+  || fail 2 "RELEASES_DIR ist fuer Gruppe oder andere schreibbar (Modus ${dir_mode}): ${releases_dir}"
 
 # --- 1. Zustand ------------------------------------------------------------------
 echo "== Zustand"
