@@ -14,7 +14,7 @@ Ziel: ein Bericht, auf dem die nächste Sitzung ohne Rückfragen aufsetzen kann.
 3. **Lehrstoff erstellen.** Vor dem Bericht aus den Konzepten der Sitzung eine HTML-Seite als Artifact veröffentlichen (Artifacts-Connector), Titel `Lehrstoff: <Thema der Sitzung>`. Grundlage ist immer `lehrstoff-vorlage.html` in diesem Ordner: Tokens, Schriften und Bausteine übernehmen; Bausteine weglassen, wiederholen oder neue aus denselben Tokens bauen ist erlaubt, wenn es das Design weiterentwickelt. Keine externen Schriften, Skripte oder Bilder. Die Seite entsteht als Datei im Scratchpad, nie im Repository, und wird von dort veröffentlicht. Den Link dem Nutzer in der Zusammenfassung (Schritt 5) **eigens nennen**; er kommt auch in den Bericht (Abschnitt 1 und „Vor oder in der Sitzung zu verstehen"). Ist kein Artifacts-Connector verfügbar, fragen, wie der Lehrstoff stattdessen geliefert werden soll; nichts eigenmächtig ins Repository legen.
 4. **Bericht schreiben** nach dem Aufbau unten, auf Deutsch mit echten Umlauten.
 5. **Dem Nutzer zusammenfassen**, was im Bericht steht und was als Erstes in der nächsten Sitzung ansteht.
-6. **Nicht selbst committen.** Vorschlagen: Branch `docs/sitzung-NN`, PR-Titel `docs: add session report NN`. Commit und Push nur auf ausdrückliche Aufforderung (CLAUDE.md Abschnitt 6).
+6. **Nicht selbst committen.** Vor dem Commit gilt für den Bericht die kurze Prüfung aus `pr-pruefen`. Vorschlagen: Branch `docs/sitzung-NN`, PR-Titel `docs: add session report NN`. Commit und Push nur auf ausdrückliche Aufforderung (CLAUDE.md Abschnitt 6).
 
 ## Aufbau des Berichts
 
@@ -65,6 +65,8 @@ Ziel: ein Bericht, auf dem die nächste Sitzung ohne Rückfragen aufsetzen kann.
 ## Regeln für den Inhalt
 
 - **Entscheidungen** tragen Codes `E-<Schritt>-<n>`, fortlaufend innerhalb des Schritts. ADR-Kandidaten als solche kennzeichnen; für die Ausarbeitung gibt es den Skill `/adr`.
+- **Bezug zu früheren Entscheidungen:** Vor dem Eintragen jeder neuen Entscheidung den Skill `entscheidungen-suchen` für ihr Thema anwenden. Ersetzt, ändert oder präzisiert sie eine frühere, steht das in der Zeile („ersetzt E-…“, „präzisiert E-…“). Hat die Sitzung eine frühere Entscheidung bestätigt oder angewendet statt neu entschieden, den alten Code nennen statt einen neuen zu vergeben.
+- **Ablageort jeder Entscheidung:** Für jede Entscheidung, die noch in keinem ADR steht, unter „Offene Punkte“ vermerken, in welches ADR oder welchen Nachtrag sie gehört. So bleibt sichtbar, was nur im Bericht steht.
 - **Digests, SHAs, Versionen** nur aufnehmen, wenn sie in dieser Sitzung aus Registry bzw. Primär-Repo aufgelöst wurden, mit Datum.
 - **Keine Geheimnisse:** keine Schlüssel- oder Zertifikatsinhalte, keine Tokens, keine Connection Strings, keine personenbezogenen Daten.
 - **Selbsttragend:** Der Bericht verweist nicht auf „den Chat". Wer nur den Bericht liest, muss den Stand verstehen.
