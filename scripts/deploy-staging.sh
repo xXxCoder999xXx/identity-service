@@ -65,14 +65,6 @@
 # =============================================================================
 set -euo pipefail
 
-# Projektname fest im Skript, nicht aus compose.yaml des Releases: Ein
-# Release mit anderem Namen saehe den laufenden Stack sonst nicht, und der
-# Rueckweg traefe ein anderes Projekt. Die Restart-Unit (4d-3c) nutzt
-# denselben Namen.
-readonly COMPOSE_PROJECT="identity-service-staging"
-readonly HEALTH_ATTEMPTS=12
-readonly HEALTH_DELAY_SECONDS=5
-
 fail_reason=""
 fail() {
   fail_reason="$2"
@@ -82,7 +74,7 @@ fail() {
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 for f in fetch-release.sh verify-attestations-server.sh verify-package-private.sh \
-  lib/release-rules.sh lib/release-state.sh lib/registry-only.sh; do
+  lib/release-rules.sh lib/release-state.sh lib/registry-only.sh lib/staging-runtime.sh; do
   [ -r "${script_dir}/${f}" ] || fail 2 "Datei nicht gefunden: ${script_dir}/${f}"
 done
 # shellcheck source=lib/release-rules.sh
@@ -91,6 +83,9 @@ done
 . "${script_dir}/lib/release-state.sh"
 # shellcheck source=lib/registry-only.sh
 . "${script_dir}/lib/registry-only.sh"
+# Projektname, Rootless-Pruefung und Health (gemeinsam mit restart-api.sh).
+# shellcheck source=lib/staging-runtime.sh
+. "${script_dir}/lib/staging-runtime.sh"
 
 readonly API_NAME="${REGISTRY_PREFIX}/identity-service"
 readonly NGINX_NAME="${REGISTRY_PREFIX}/identity-service-nginx"
@@ -170,16 +165,14 @@ done
 export STAGING_SERVER_NAME_FILE STAGING_CA_DIR STAGING_API_CERT_DIR
 
 # Servername fuer die Health-Pruefung: genau eine Zeile, wie nginx sie liest.
-server_line="$(cat -- "${STAGING_SERVER_NAME_FILE}")"
-[[ "${server_line}" =~ ^server_name\ ([a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?)\;$ ]] \
-  || fail 2 "STAGING_SERVER_NAME_FILE enthaelt nicht genau 'server_name <name>;'."
-server_name="${BASH_REMATCH[1]}"
+staging_read_server_name "${STAGING_SERVER_NAME_FILE}" \
+  || fail 2 "Servername nicht lesbar (Grund oben)."
 
 # Sperre im STATE_DIR, nicht im RuntimeDirectory: Ein Lauf von Hand hat ein
 # anderes RuntimeDirectory, aber denselben Zustand.
-exec 9>"${state_dir}/.deploy.lock"
+exec 9>"${state_dir}/.deploy.lock" || fail 2 "Sperrdatei nicht anlegbar: ${state_dir}/.deploy.lock"
 if ! flock -n 9; then
-  echo "Ein anderer Deploy laeuft; dieser Lauf endet ohne Aenderung."
+  echo "Sperre belegt (Deploy oder API-Neustart); dieser Lauf endet ohne Aenderung."
   skip_ping="yes"
   exit 0
 fi
@@ -224,11 +217,7 @@ echo "== Anmeldung"
 # Erst pruefen, wem das Token gleich gegeben wird (E-5-112): docker login
 # reicht es an den Daemon hinter DOCKER_HOST weiter. Nur der rootless Daemon
 # von deploy darf es bekommen. fetch-release.sh prueft spaeter noch einmal.
-security="$(timeout 30 docker info --format '{{.SecurityOptions}}')" \
-  || fail 2 "docker info gescheitert (Daemon nicht erreichbar?)."
-[[ " ${security//[\[\]]/ } " == *" name=rootless "* ]] \
-  || fail 2 "Docker laeuft nicht rootless: ${security}"
-echo "docker rootless"
+staging_require_rootless || fail 2 "Docker-Pruefung gescheitert (Grund oben)."
 token_file="${CREDENTIALS_DIRECTORY}/ghcr-token"
 [ -r "${token_file}" ] || fail 2 "Credential ghcr-token nicht lesbar."
 # $(...) entfernt abschliessende LF; ein CR (Datei aus Windows) einzeln.
@@ -300,20 +289,8 @@ valid_ref "${NGINX_NAME}" "${new_nginx}" || fail 3 "nginx-Referenz ungueltig: '$
 valid_ref "${LEGO_NAME}" "${new_lego}" || fail 3 "lego-Referenz ungueltig: '${new_lego}'"
 
 # --- Health ----------------------------------------------------------------------
-# Ueber nginx wie ein Client, aber an die eigene Adresse (--resolve). Das
-# Zertifikat prueft curl gegen den System-Trust-Store (Let's Encrypt).
-health() {
-  local i
-  for ((i = 1; i <= HEALTH_ATTEMPTS; i++)); do
-    if curl -fsS -o /dev/null -m 5 --resolve "${server_name}:443:127.0.0.1" "https://${server_name}/health"; then
-      echo "Health gruen (Versuch ${i})"
-      return 0
-    fi
-    [ "${i}" -eq "${HEALTH_ATTEMPTS}" ] || sleep "${HEALTH_DELAY_SECONDS}"
-  done
-  echo "Health rot nach ${HEALTH_ATTEMPTS} Versuchen" >&2
-  return 1
-}
+# staging_health aus lib/staging-runtime.sh (gemeinsam mit restart-api.sh).
+health() { staging_health; }
 
 case "${decision}" in
   noop)
@@ -390,7 +367,7 @@ fi
 compose_up() {
   local dir="$1"
   API_IMAGE="$2" NGINX_IMAGE="$3" LEGO_IMAGE="$4" \
-    timeout 300 docker compose -p "${COMPOSE_PROJECT}" --project-directory "${dir}" \
+    timeout 300 docker compose -p "${STAGING_COMPOSE_PROJECT}" --project-directory "${dir}" \
     -f "${dir}/compose.yaml" -f "${dir}/compose.staging.yaml" \
     up -d --no-build --pull never --remove-orphans
 }

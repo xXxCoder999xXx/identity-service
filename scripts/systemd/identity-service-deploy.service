@@ -15,7 +15,7 @@
 #     nginx.Dockerfile (= docker/nginx/Dockerfile, E-5-177)       0644
 #   /usr/local/lib/identity-service/lib/             root:root 0755
 #     release-rules.sh release-state.sh registry-only.sh
-#     attestation-rules.sh                                        0644
+#     attestation-rules.sh staging-runtime.sh                     0644
 #   /etc/credstore/identity-service-deploy.ghcr-token  root 0600 (E-5-168)
 #   /etc/credstore/identity-service-deploy.ping-url    root 0600 (ADR-013)
 #   /etc/identity-service/deploy.env                   root 0644
@@ -37,7 +37,9 @@
 # Bind-Mounts, die der Daemon als deploy einhaengt; die Rechte der Ordner
 # darueber spielen fuer sie keine Rolle, nur die der Dateien (0644, setzt
 # fetch-release.sh). Beim ersten echten compose up zu messen; scheitert nginx
-# am Lesen, 0711 und Nachtrag zu ADR-017.
+# am Lesen, 0711 und Nachtrag zu ADR-017. identity-service-api-restart.service
+# teilt das StateDirectory (Sperre): StateDirectoryMode immer in beiden Units
+# gleich aendern, sonst setzt jede Unit beim Start ihren Wert.
 [Unit]
 Description=Staging: Freigabe pruefen und ausrollen (ADR-017)
 Wants=network-online.target

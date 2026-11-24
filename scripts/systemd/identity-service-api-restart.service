@@ -1,0 +1,68 @@
+# Startet die API von Staging neu (E-5-120, PR 4d-3c): scripts/restart-api.sh.
+# Ablageort: /etc/systemd/system, root:root, 0644.
+#
+# Gestartet nur von renew-api-certificate.sh per systemctl start (E-5-178),
+# nicht per Timer. systemctl start wartet, bis der oneshot fertig ist, und
+# liefert dessen Ergebnis; ein Fehler geht dort an /fail (E-5-101). Ein
+# fremder Benutzer darf die Unit nicht starten (gemessen, Sitzung 32).
+#
+# Installation nach E-5-56 und E-5-99 wie die Deploy-Unit:
+#   /usr/local/lib/identity-service/restart-api.sh           root 0755
+#   /usr/local/lib/identity-service/lib/staging-runtime.sh   root 0644
+#
+# Sandbox wie die Deploy-Unit (E-5-118), aber kleiner: kein Credential,
+# kein Netz ausser Loopback (Health ueber nginx an 127.0.0.1).
+#
+# StateDirectory teilt sie mit dem Deploy, nur wegen der gemeinsamen Sperre.
+# StateDirectoryMode muss gleich sein: systemd setzt den Modus bei jedem
+# Start; ein abweichender Wert wuerde den Ordner des Deploys umstellen.
+[Unit]
+Description=Staging: API neu starten (E-5-120)
+After=user@1001.service
+
+[Service]
+Type=oneshot
+User=deploy
+Group=deploy
+ExecStart=/usr/local/lib/identity-service/restart-api.sh /var/lib/identity-service-deploy
+Environment=STAGING_SERVER_NAME_FILE=/etc/identity-service/server_name.conf
+Environment=DOCKER_HOST=unix:///run/user/1001/docker.sock
+Environment=HOME=%t/identity-service-api-restart
+Environment=XDG_CONFIG_HOME=%t/identity-service-api-restart/config
+StateDirectory=identity-service-deploy
+StateDirectoryMode=0700
+RuntimeDirectory=identity-service-api-restart
+RuntimeDirectoryMode=0700
+UMask=0077
+# Wartet hoechstens 50 Minuten auf die Sperre (laufender Deploy, bis zu
+# 45 Minuten), dann Neustart (bis 2 Minuten) und Health (rund 2 Minuten).
+# Unter TimeoutStartSec der Zertifikats-Unit (60 Minuten).
+TimeoutStartSec=58min
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=tmpfs
+BindPaths=/run/user/1001/docker.sock
+InaccessiblePaths=/etc/identity-service/ca-private /etc/credstore
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+# Harte Grenze: nur Unix-Sockets und IPv4. Der IP-Filter (cgroup-BPF) kommt
+# dazu; fehlt BPF, warnt systemd nur und laeuft ohne ihn. Bei der
+# Installation messen, dass ein Ziel ausser 127.0.0.1 abgelehnt wird.
+RestrictAddressFamilies=AF_UNIX AF_INET
+IPAddressDeny=any
+IPAddressAllow=localhost
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+SystemCallArchitectures=native
