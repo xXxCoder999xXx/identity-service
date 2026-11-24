@@ -120,7 +120,8 @@ Ein PR ändert `deploy/staging.json`:
 Nach dem Merge baut der Workflow `release-staging.yml` (nur `push` auf
 `main` mit Pfadfilter, kein `workflow_dispatch`) ein Image `FROM scratch`
 mit fester Dateiliste: `staging.json`, `compose.yaml`, `compose.staging.yaml`,
-`nginx.staging.conf`, `nginx/snippets/**`. Er prüft vorher die drei Images
+`nginx.staging.conf`, `nginx/snippets/**` und `docker/nginx/Dockerfile`
+(E-5-160, siehe Nachtrag). Er prüft vorher die drei Images
 mit dem bestehenden Gate, lädt das Bündel als
 `ghcr.io/xxxcoder999xxx/identity-service-release:staging` hoch und stellt
 einen Nachweis mit dem Inhalt von `staging.json` als Predicate aus
@@ -201,8 +202,8 @@ Datei unter `/etc/identity-service/`, die die Unit nur lesen kann.
   `refs/heads/main` (Kennungen statt Namen, E-5-121), nicht nur an einen
   GitHub-weiten Schlüssel.
 - Die Run-ID stammt aus dem von Fulcio ausgestellten Zertifikat. Ein Re-run
-  eines alten Laufs behält seine alte ID und wird abgelehnt (erwartet, noch
-  nicht gemessen).
+  eines alten Laufs behält seine alte ID und wird abgelehnt (gemessen am
+  23.11.2026, siehe Nachtrag).
 - Gemessen: `gh` nennt beim Prüfen per Tag den geprüften Digest. Weil der
   Server danach nur per Digest zieht und die Digests aus dem Predicate liest,
   entsteht kein Zeitfenster zwischen Prüfen und Nutzen.
@@ -244,9 +245,10 @@ Datei unter `/etc/identity-service/`, die die Unit nur lesen kann.
 
 **Neue Pflichten und offene Messungen**
 
-- Re-run eines Freigabe-Laufs: gleiche Run-ID, `attempts/2` (beim ersten
-  echten Lauf).
-- Kopieren der Dateien aus dem Freigabe-Image unter rootless Docker.
+- ~~Re-run eines Freigabe-Laufs: gleiche Run-ID, `attempts/2`~~ gemessen
+  am 23.11.2026 (Nachtrag).
+- ~~Kopieren der Dateien aus dem Freigabe-Image unter rootless Docker~~
+  gemessen am 24.11.2026 (Nachtrag).
 - E-5-120: Darf die Deploy-Unit ohne Capabilities `systemctl start` für die
   Restart-Unit aufrufen?
 - `.claude/rules/*.md` um den Freigabe-Weg ergänzen (Ownerin).
@@ -269,3 +271,86 @@ Datei unter `/etc/identity-service/`, die die Unit nur lesen kann.
 - Ein zweiter Service geht in Staging.
 - Debian liefert ein `git` ohne offene Lücken und ein Grund für `git` auf
   dem Server entsteht.
+
+## Nachtrag 2026-11-24: Umsetzung 4a bis 4c und Messungen
+
+Die Teile 4a (#161), 4b (#163) und 4c (#165) sowie der Refactor
+`push-image.sh` (#162) sind gemergt. Dabei fielen Entscheidungen, die über
+den Text oben hinausgehen, und zwei offene Messungen sind erledigt. Die
+betroffenen Stellen oben sind angepasst. Der Status bleibt „Vorgeschlagen“,
+bis die Ownerin ihn ändert.
+
+### Messungen
+
+**Re-run behält die Run-ID (23.11.2026).** Der Release-Lauf `45202570572`
+brauchte drei Versuche (Paket öffentlich, Repository kurzzeitig privat). Der
+Nachweis aus Versuch 3 trägt `…/actions/runs/45202570572/attempts/3`: Die
+Run-ID bleibt, nur der Versuch steigt. Damit trägt die Annahme aus der
+Begründung. Ein Re-run eines alten Laufs scheitert zusätzlich schon in der CI
+am Aktualitätsschutz (E-5-156).
+
+**Freigabe am Server (24.11.2026, Deploy-Benutzer, rootless Docker,
+temporärer `DOCKER_CONFIG`, Platzhalter in `GH_TOKEN`):**
+
+| Messung | Ergebnis |
+|---|---|
+| Maschinenkonto zieht `identity-service-release` per Digest | gelingt (Leserecht wirksam) |
+| Fein abgestuftes Token des Maschinenkontos | `docker login` meldet Erfolg, `docker pull` scheitert mit `permission_denied: The token provided does not match expected scopes`, auch für das bisher lesbare API-Paket |
+| `docker create` auf dem Bundle ohne Befehl | `no command specified` |
+| `docker create <digest> /nonexistent`, dann `docker cp` | angelegt, nie gestartet; Datei byte-gleich zum Commit, Rechte 0644 |
+| `verify-release.sh …:staging` mit den Dateien von `b5692ac` | Exit 0, Run `45202570572`, Versuch 3, 4/4 Gegenproben am erwarteten Grund |
+| `fetch-release.sh`, gespeicherte Run-ID höher als die Freigabe `45428174452` | Exit 6, „kleiner als gespeichert“, nichts angelegt |
+| `fetch-release.sh`, gespeicherte Run-ID niedriger | `deploy`, genau zehn Dateien, 0644/0755; zweiter Lauf: „existiert bereits mit gleichem Inhalt“ |
+
+Der zweite Release-Lauf `45428174452` (nach #165, Commit `e5eab9d`) setzte
+`staging` auf `sha256:329bdd34…eb88`; die Images sind unverändert die von
+`768bbb4`.
+
+### Weitere Teilentscheidungen
+
+| Code | Inhalt |
+|---|---|
+| E-5-150 | Ein jq-Programm (`RELEASE_RULES`, `RELEASE_FACTS`) für jq in der CI und gojq am Server, nur der gemeinsame Sprachkern; in beiden belegt |
+| E-5-151 | Kanonische Form ist Pflicht für `deploy/staging.json` (doppelte Schlüssel, BOM, ruhige Diffs) |
+| E-5-152 | Erste Freigabe mit den Digests von `768bbb4` (am Server gemessen) |
+| E-5-153 | `/deploy/` ist CODEOWNERS-pflichtig: Eine Änderung dort ist ein Deploy |
+| E-5-154 | Der Release-Workflow prüft die drei Images mit dem Server-Einstieg, bevor er signiert |
+| E-5-155 | Bundle = feste Dateiliste `RELEASE_FILES` in `scripts/lib/release-rules.sh`; nur Daten, keine Skripte; `FROM scratch` |
+| E-5-156 | Nur der aktuelle Stand von `main` darf `staging` setzen (Aktualitätsschutz) |
+| E-5-157 | Die CI prüft: Run-ID und Commit im Zertifikat gehören zu diesem Lauf; Prüfung per Digest und per Tag |
+| E-5-158 | `scripts/push-image.sh` ist die einzige Push- und Digest-Logik |
+| E-5-159 | Pfadfilter von `release-staging.yml` plus automatischer Abgleich mit `RELEASE_FILES` (keine Drift ohne neue Freigabe) |
+| E-5-160 | `docker/nginx/Dockerfile` gehört ins Bundle (Quelle der Gegenprobe am Server, E-5-132) |
+| E-5-161 | Erwartete Werte, Mindestversion und Platzhalter in `scripts/lib/registry-only.sh` (zwei Server-Einstiege, eine Quelle) |
+| E-5-162 | Predicate-Typ der Gegenproben als Erweiterungspunkt; neue Gegenprobe „falscher Predicate-Typ“ |
+| E-5-163 | Die Downgrade-Regel ist die reine Funktion `release_decide` in `scripts/lib/release-state.sh` (`deploy`, `first`, `noop`, `reject`); jede Zeile der Tabelle oben ist ein Testfall in `scripts/test-release-state.sh` im Pflicht-Job `Container & nginx` |
+| E-5-164 | Eine vorhandene, aber ungültige Zustandsdatei ist `reject`, nie „kein Zustand“. Format: genau drei Zeilen `run`, `commit`, `bundle` mit Tabulator und LF; Lesen und Schreiben nutzen dieselbe Bibliothek |
+| E-5-165 | Run-ID per Regex (höchstens 18 Ziffern, ohne führende Null) vor jeder Arithmetik |
+| E-5-166 | Dateien aus dem Bundle: `docker create <verifizierter Digest> /nonexistent`, `docker cp` nur für `RELEASE_FILES`; Link, leere Datei, Ordner oder mehr als 256 KiB bricht ab; Rechte 0644/0755 setzt der Server; Kopie in `.incoming.*`, dann atomar umbenennen; ein vorhandener `releases/<commit>/` muss byte-gleich sein |
+| E-5-167 | `scripts/fetch-release.sh`: Exit 6 ist der Alarm der Downgrade-Regel; Exit 2 bis 5 von `verify-release.sh` werden unverändert weitergegeben |
+| E-5-168 | Das GHCR-Token des Maschinenkontos ist ein klassisches Token nur mit `read:packages` und festem Ablauf. GitHub Packages unterstützt laut Doku nur klassische Tokens; ein fein abgestuftes scheitert erst beim Pull (gemessen) |
+
+### Konsequenzen
+
+- Ein klassisches Token gilt für alles, was das Maschinenkonto lesen darf.
+  Die Begrenzung leistet das Konto selbst (Leserecht nur auf die vier
+  Pakete); das Token ist nur so eng wie das Konto.
+- Erfolgreiches `docker login` beweist bei GHCR kein Leserecht; gemessen wird
+  am Pull.
+- Änderungen unter `scripts/lib/**` erzeugen über den Pfadfilter eine neue
+  Freigabe mit neuer Run-ID, auch ohne geänderte Images (gewollt, DORA zählt
+  sie mit).
+
+### Offen für 4d
+
+- `scripts/verify-package-private.sh` liest `compose.scan.yaml` aus der
+  Repository-Wurzel; die gibt es am Server nicht. Schritt 1 des Ablaufs
+  braucht dort eine andere Quelle für die Gegenprobe.
+- Herkunft von `NGINX_DOCKERFILE` beim ersten Deploy, solange es kein
+  `current` gibt. Ein falsches Dockerfile kann die Gegenprobe nur rot machen,
+  nie grün (fail closed).
+- `RELEASES_DIR`: `fetch-release.sh` prüft Eigentümer und Link, nicht aber,
+  ob Gruppe oder andere schreiben dürfen. Der Ordner entsteht per
+  `StateDirectory` mit `UMask=0077`; eine zusätzliche Prüfung ist vorgemerkt.
+- `flock`, Schreiben des Zustands und `current` (Schritte 0, 8) sowie das
+  Prüf-Gate der drei Images (Schritt 4) liegen im Deploy-Skript.
