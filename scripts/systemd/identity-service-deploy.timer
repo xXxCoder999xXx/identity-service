@@ -1,0 +1,26 @@
+# Alle fuenf Minuten: Staging-Freigabe pruefen und ausrollen (E-5-173).
+# Ablageort: /etc/systemd/system, root:root, 0644.
+#
+# Fuenf Minuten halten die DORA-Vorlaufzeit kurz; RandomizedDelaySec
+# verteilt die Abrufe bei der Registry. Kein Persistent: Ein verpasster Lauf
+# braucht kein Nachholen, der naechste kommt nach fuenf Minuten. Laeuft ein
+# Deploy laenger, startet systemd die Unit nicht ein zweites Mal (oneshot);
+# fuer Laeufe von Hand sperrt das Skript per flock.
+#
+# Healthchecks.io: Periode 5 Minuten, Grace 45 Minuten (= TimeoutStartSec der
+# Unit; waehrend eines Laufs geht kein Ping).
+#
+# Eingeschaltet wird der Timer erst nach Schritt 3 (server_name, erstes
+# Zertifikat) und dem ersten Deploy von Hand (Sitzung 33, wie Sitzung 19:
+# erst nach bestandenen Gegenproben). Vorher endet jeder Lauf mit Exit 2 und
+# /fail-Ping; Healthchecks alarmiert einmal beim Wechsel auf down (ADR-013).
+[Unit]
+Description=Alle 5 Minuten: Staging-Freigabe pruefen und ausrollen (E-5-173)
+
+[Timer]
+OnCalendar=*:0/5
+RandomizedDelaySec=30
+AccuracySec=1s
+
+[Install]
+WantedBy=timers.target

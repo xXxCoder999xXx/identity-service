@@ -135,6 +135,10 @@ cat >"${work}/bin/docker" <<'EOF'
 #!/usr/bin/env bash
 echo "docker $* | API_IMAGE=${API_IMAGE:-} NGINX_IMAGE=${NGINX_IMAGE:-} LEGO_IMAGE=${LEGO_IMAGE:-}" >>"${FAKE_LOG}"
 case "$1" in
+  info)
+    [ "${FAKE_INFO_EXIT:-0}" = "0" ] || exit "${FAKE_INFO_EXIT}"
+    printf '%s\n' "${FAKE_SECURITY:-[name=seccomp,profile=builtin name=rootless name=cgroupns]}"
+    exit 0 ;;
   login)
     [ -n "${DOCKER_CONFIG:-}" ] && [ -d "${DOCKER_CONFIG}" ] || { echo "kein DOCKER_CONFIG" >&2; exit 1; }
     cat >"${FAKE_LOGIN_STDIN}"
@@ -212,7 +216,7 @@ reset() {
   export FAKE_API="${new_api}" FAKE_NGINX="${new_nginx}" FAKE_LEGO="${new_lego}"
   unset FAKE_FETCH_EXIT FAKE_FETCH_OUT FAKE_FETCH_DIR FAKE_NO_DIR FAKE_VIS_EXIT FAKE_ATTEST_FAIL_REF \
     FAKE_ATTEST_EXIT FAKE_LOGIN_EXIT FAKE_PULL_EXIT FAKE_INSPECT_OUT FAKE_COMPOSE_FAIL_API \
-    FAKE_BAD_API FAKE_PING_EXIT FAKE_FLOCK_EXIT
+    FAKE_BAD_API FAKE_PING_EXIT FAKE_FLOCK_EXIT FAKE_INFO_EXIT FAKE_SECURITY
 }
 
 # Laufender alter Stand: Release a ist ausgerollt und gesund.
@@ -389,6 +393,18 @@ deploy "fein abgestuftes Token" 2 "nicht die Form eines klassischen Tokens"
 reset
 rm -f "${work}/cred/ghcr-token"
 deploy "Token fehlt" 2 "ghcr-token nicht lesbar"
+reset
+export FAKE_SECURITY="[name=seccomp,profile=builtin name=cgroupns]"
+deploy "Docker nicht rootless: kein Token an den Daemon" 2 "Docker laeuft nicht rootless"
+hasnt "nicht rootless: kein Login" "docker login"
+reset
+export FAKE_INFO_EXIT=1
+deploy "docker info scheitert" 2 "docker info gescheitert"
+hasnt "docker info rot: kein Login" "docker login"
+reset
+deploy "Pruefung vor dem Login (Reihenfolge)" 0 "docker rootless"
+order="$(grep -oE '^docker (info|login)' "${FAKE_LOG}" | head -n 2 | tr '\n' ',')"
+if [ "${order}" = "docker info,docker login," ]; then ok "info vor login"; else bad "Reihenfolge info/login: ${order}"; fi
 reset
 export FAKE_LOGIN_EXIT=1
 deploy "Login scheitert" 2 "docker login an ghcr.io gescheitert"
