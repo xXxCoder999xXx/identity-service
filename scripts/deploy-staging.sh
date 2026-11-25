@@ -35,6 +35,12 @@
 #      (E-5-177). Bei noop: nur Health pruefen und enden.
 #   4. Pruef-Gate der drei Images (ADR-015).
 #   5. Pull per Digest und Abgleich der RepoDigests.
+#   5b. Nur bei first: Erst-Zertifikat. Das Projekt muss leer sein (kein
+#      Container, auch kein gestoppter); lego holt "edge" im Standalone-Modus
+#      auf Port 80, weil nginx ohne Zertifikat nicht startet. lego run holt
+#      nur, wenn kein Zertifikat unter dem Namen liegt, sonst erneuert es
+#      nur bei Faelligkeit. Danach wird der Einmal-Container immer entfernt
+#      und das Projekt erneut als leer geprueft.
 #   6. PUNKT OHNE WIEDERKEHR: docker compose up mit dem neuen Release.
 #   7. Health ueber nginx. Rot: Rueckweg mit altem current und alten
 #      Digests (E-5-175); Zustand und current bleiben alt.
@@ -44,9 +50,12 @@
 #   9. Ping an den Totmannschalter bei jedem Ausgang (trap EXIT): Exit 0 auf
 #      ok, sonst /fail mit dem Exit-Code. Ausnahme: Sperre belegt.
 #
-# Exit-Codes (0 bis 8 und 12: am laufenden Stand hat sich nichts geaendert):
+# Exit-Codes (0 bis 8, 12 und 13: am laufenden Stand hat sich nichts
+# geaendert; bei 13 kann lego Konto oder Zertifikat in seine Volumes
+# geschrieben haben):
 #   0   ausgerollt, noop mit gesunder Health oder Sperre belegt
-#   2   Voraussetzung, Parameter, Umgebung oder Token
+#   2   Voraussetzung, Parameter, Umgebung oder Token; bei first auch:
+#       Projekt nicht leer oder docker ps gescheitert
 #   3   Nachweis oder Freigabe ungueltig (fetch-release.sh oder Pruef-Gate)
 #   4   eine Gegenprobe wurde akzeptiert
 #   5   eine Gegenprobe scheiterte am falschen Grund
@@ -57,6 +66,8 @@
 #   10  KRITISCH: Rueckweg gescheitert oder nicht moeglich
 #   11  neuer Stand gesund, aber current oder Zustand nicht geschrieben
 #   12  noop, aber der laufende Stand ist ungesund (nichts neu gestartet)
+#   13  first: Erst-Zertifikat nicht erhalten oder Einmal-Container nicht
+#       entfernt (nichts gestartet)
 #
 # Installation (E-5-117): root-eigen unter /usr/local/lib/identity-service/
 # zusammen mit fetch-release.sh, verify-release.sh,
@@ -83,7 +94,8 @@ done
 . "${script_dir}/lib/release-state.sh"
 # shellcheck source=lib/registry-only.sh
 . "${script_dir}/lib/registry-only.sh"
-# Projektname, Rootless-Pruefung und Health (gemeinsam mit restart-api.sh).
+# Projektname, Rootless-Pruefung, Container-Suche und Health (gemeinsam mit
+# restart-api.sh).
 # shellcheck source=lib/staging-runtime.sh
 . "${script_dir}/lib/staging-runtime.sh"
 
@@ -328,6 +340,64 @@ for ref in "${new_api}" "${new_nginx}" "${new_lego}"; do
   grep -Fxq -- "${ref}" <<<"${digests}" || fail 8 "Digest nach dem Pull weicht ab: ${ref}"
   echo "ok ${ref}"
 done
+
+# --- 5b. Erst-Zertifikat (nur first) ---------------------------------------------
+# Henne-Ei: nginx startet nicht ohne edge.crt, HTTP-01 ueber den Webroot
+# braucht aber nginx. Deshalb beantwortet lego die Pruefung beim ersten Mal
+# selbst (Standalone). Hier statt in einem eigenen Skript, damit Token,
+# Pruef-Gate und Pull nur an einer Stelle stehen; das lego-Image ist ab hier
+# geprueft und per Digest lokal.
+#
+# Leeres Projekt als Vorbedingung, sonst Exit 2: Ein laufender oder
+# gestoppter Container (etwa nach Exit 10 oder 11) koennte Port 80 halten;
+# ob er weg darf, entscheidet ein Mensch, nicht dieses Skript.
+#
+# lego laeuft als UID 101 ohne Capabilities und darf deshalb Port 80 im
+# Container nicht belegen: Es hoert auf 8080, Compose veroeffentlicht 80,
+# nur auf IPv4 wie nginx (E-5-73; ohne Host-IP bindet Docker auch [::]).
+# Kein --server: direkt gegen die Produktion von Let's Encrypt, ohne
+# Probelauf (Sitzung 34): Ein Staging-Zertifikat bestuende die Health
+# nicht, ein Fehlschlag kostet laut Rate-Limits hoechstens eine Stunde.
+# Keine E-Mail (E-5-66: keine oeffentliche Adresse), Schluesseltyp Standard
+# (EC256), Name "edge" (E-5-82), Domain aus lib/staging-runtime.sh.
+#
+# Zeitbudget (E-5-189, TimeoutStartSec 45 min): 3 x 30 s docker ps, 310 s
+# lego, 60 s docker rm; zusammen mit dem Rest rund 38 Minuten.
+
+require_empty_project() {
+  local ids n
+  ids="$(staging_container_ids)" || fail "$2" "docker ps gescheitert ($1)."
+  n="$(grep -c . <<<"${ids}" || true)"
+  [ "${n}" = "0" ] \
+    || fail "$2" "Erst-Modus verlangt ein leeres Projekt ${STAGING_COMPOSE_PROJECT} ($1), gefunden ${n} Container. Von Hand pruefen und gegebenenfalls entfernen."
+}
+
+if [ "${decision}" = "first" ]; then
+  echo "== Erst-Zertifikat"
+  require_empty_project "vor lego" 2
+  lego_code=0
+  API_IMAGE="${new_api}" NGINX_IMAGE="${new_nginx}" LEGO_IMAGE="${new_lego}" \
+    timeout --kill-after=10 300 docker compose -p "${STAGING_COMPOSE_PROJECT}" --project-directory "${new_dir}" \
+    -f "${new_dir}/compose.yaml" -f "${new_dir}/compose.staging.yaml" --profile acme \
+    run --rm -T --pull never --publish 0.0.0.0:80:8080 lego \
+    run --path /data --accept-tos --http --http.address :8080 \
+    --cert.name edge --domains "${STAGING_SERVER_NAME}" || lego_code=$?
+  # Immer aufraeumen, auch nach Erfolg: Ob "run --rm" nach einem Abbruch
+  # durch timeout den Container entfernt, ist nicht gemessen. Entfernt
+  # werden nur Einmal-Container von lego in diesem Projekt (Labels, nicht
+  # Name): Vor lego war das Projekt leer, also stammen sie von diesem Lauf.
+  # Ein Fehler hier ist kein Urteil; das Urteil faellt in der Pruefung danach.
+  if leftovers="$(staging_container_ids "com.docker.compose.service=lego" "com.docker.compose.oneoff=True")"; then
+    while read -r id; do
+      [[ "${id}" =~ ^[0-9a-f]{64}$ ]] || continue
+      timeout 60 docker rm -f "${id}" >/dev/null 2>&1 || true
+    done <<<"${leftovers}"
+  fi
+  require_empty_project "nach lego" 13
+  [ "${lego_code}" = "0" ] \
+    || fail 13 "Erst-Zertifikat nicht erhalten (lego Exit ${lego_code}); nichts gestartet."
+  echo "Erst-Zertifikat vorhanden"
+fi
 
 # --- Rueckweg vorbereiten (vor dem Punkt ohne Wiederkehr) ------------------------
 # Alte Digests aus current/deploy/staging.json, Zeile fuer Zeile per Regex

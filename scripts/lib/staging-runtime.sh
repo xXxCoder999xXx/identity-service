@@ -9,9 +9,10 @@
 #   scripts/restart-api.sh      API-Neustart nach Zertifikatserneuerung (4d-3c)
 #
 # Warum eine Bibliothek: Beide Einstiege muessen denselben Daemon, denselben
-# Projektnamen und dieselbe Health-Pruefung verwenden. Stuende das zweimal
-# da, koennte ein Neustart einen anderen Stack treffen oder anders "gesund"
-# bewerten als der Deploy (eine Quelle der Wahrheit).
+# Projektnamen, dieselbe Container-Suche und dieselbe Health-Pruefung
+# verwenden. Stuende das zweimal da, koennte ein Neustart einen anderen
+# Stack treffen oder anders "gesund" bewerten als der Deploy (eine Quelle
+# der Wahrheit).
 #
 # Kein exit in dieser Datei: Die Funktionen melden ueber den Rueckgabewert
 # und stderr; der Einstieg entscheidet, wie er abbricht.
