@@ -8,11 +8,22 @@
 #   scripts/deploy-staging.sh   Pull-Deploy (PR 4d-3a)
 #   scripts/restart-api.sh      API-Neustart nach Zertifikatserneuerung (4d-3c)
 #
-# Warum eine Bibliothek: Beide Einstiege muessen denselben Daemon, denselben
+# Warum eine Bibliothek: Alle Einstiege muessen denselben Daemon, denselben
 # Projektnamen, dieselbe Container-Suche und dieselbe Health-Pruefung
 # verwenden. Stuende das zweimal da, koennte ein Neustart einen anderen
 # Stack treffen oder anders "gesund" bewerten als der Deploy (eine Quelle
 # der Wahrheit).
+#
+# Inhalt:
+#   staging_require_rootless   Daemon rootless (E-5-112)
+#   staging_read_server_name   setzt STAGING_SERVER_NAME (E-5-82)
+#   staging_health             Health ueber nginx
+#   staging_container_ids      Container des Projekts per Label
+#   staging_valid_ref          Referenz "NAME@sha256:<64 hex>"
+#   staging_read_current       setzt STAGING_CURRENT_COMMIT aus STATE_DIR/current
+#   staging_release_ref        Referenz aus deploy/staging.json (E-5-182)
+#   staging_read_ping_url      setzt STAGING_PING_URL aus dem Credential
+#   staging_ping               Ping an den Totmannschalter (ADR-013, E-5-55)
 #
 # Kein exit in dieser Datei: Die Funktionen melden ueber den Rueckgabewert
 # und stderr; der Einstieg entscheidet, wie er abbricht.
@@ -89,4 +100,78 @@ staging_container_ids() {
     filters+=(--filter "label=${label}")
   done
   timeout 30 docker ps -a -q --no-trunc "${filters[@]}"
+}
+
+# staging_valid_ref NAME REF
+# Rueckgabe 0 nur fuer genau "NAME@sha256:<64 hex>"; NAME wird woertlich
+# verglichen. Achtung: ueberschreibt BASH_REMATCH.
+staging_valid_ref() { [[ "$2" =~ ^"$1"@sha256:[0-9a-f]{64}$ ]]; }
+
+# staging_read_current STATE_DIR
+# Setzt STAGING_CURRENT_COMMIT, wenn STATE_DIR/current relativ auf
+# releases/<commit> zeigt und der Ordner existiert; alles andere ist kein
+# current von uns (Rueckgabe 1, STAGING_CURRENT_COMMIT leer).
+staging_read_current() {
+  local target
+  STAGING_CURRENT_COMMIT=""
+  [ -L "$1/current" ] || return 1
+  target="$(readlink -- "$1/current")" || return 1
+  [[ "${target}" =~ ^releases/([0-9a-f]{40})$ ]] || return 1
+  [ -d "$1/releases/${BASH_REMATCH[1]}" ] || return 1
+  STAGING_CURRENT_COMMIT="${BASH_REMATCH[1]}"
+}
+
+# staging_release_ref KEY NAME DATEI
+# Gibt die Referenz zu KEY aus einer Freigabe deploy/staging.json aus (E-5-182):
+# Zeile fuer Zeile per Regex (kein jq auf dem Server), genau eine Zeile,
+# Name woertlich verglichen. Die Datei ist byte-gleich mit dem gepruften
+# Bundle; ihr Format prueft verify-release-file.sh vor dem Merge.
+staging_release_ref() {
+  local key="$1" name="$2" lines ref
+  lines="$(grep -E "^[[:space:]]*\"${key}\": \"${name}@sha256:[0-9a-f]{64}\",?$" -- "$3" || true)"
+  [ -n "${lines}" ] && [ "$(wc -l <<<"${lines}" | tr -d '[:space:]')" = "1" ] || return 1
+  [[ "${lines}" =~ \"([^\"]+)\",?$ ]] || return 1
+  # Sofort sichern: staging_valid_ref ueberschreibt BASH_REMATCH.
+  ref="${BASH_REMATCH[1]}"
+  # Der Punkt in ghcr.io ist im Muster oben ein beliebiges Zeichen; erst
+  # staging_valid_ref vergleicht den Namen woertlich.
+  staging_valid_ref "${name}" "${ref}" || return 1
+  printf '%s' "${ref}"
+}
+
+# staging_read_ping_url
+# Liest CREDENTIALS_DIRECTORY/ping-url (LoadCredential, ADR-013) und setzt
+# STAGING_PING_URL; fehlt sie oder hat sie eine unerwartete Form, bleibt sie
+# leer (Warnung ohne den Wert). Ohne Ping alarmiert der Totmannschalter.
+staging_read_ping_url() {
+  local candidate
+  STAGING_PING_URL=""
+  if [ -n "${CREDENTIALS_DIRECTORY:-}" ] && [ -r "${CREDENTIALS_DIRECTORY}/ping-url" ]; then
+    candidate="$(cat -- "${CREDENTIALS_DIRECTORY}/ping-url")" \
+      || { echo "WARNUNG: Ping-URL nicht lesbar, kein Ping." >&2; return 0; }
+    candidate="${candidate%$'\r'}"
+    if [[ "${candidate}" =~ ^https://[A-Za-z0-9.-]+/[A-Za-z0-9/_-]+$ ]]; then
+      STAGING_PING_URL="${candidate}"
+    else
+      echo "WARNUNG: Ping-URL hat eine unerwartete Form (nicht ausgegeben)." >&2
+    fi
+  fi
+}
+
+# staging_ping EXITCODE TEXT
+# Meldet an den Totmannschalter: Exit 0 auf die URL, sonst auf URL/fail; TEXT
+# als Inhalt. Die URL steht nie in einer Kommandozeile (curl -K -, E-5-55).
+# Scheitert der Ping, nur Warnung: Das Ausbleiben alarmiert ohnehin.
+staging_ping() {
+  local target
+  if [ -z "${STAGING_PING_URL:-}" ]; then
+    echo "WARNUNG: Ping-URL nicht lesbar, kein Ping gesendet (Totmannschalter alarmiert)." >&2
+    return 0
+  fi
+  target="${STAGING_PING_URL}"
+  [ "$1" -eq 0 ] || target="${STAGING_PING_URL}/fail"
+  if ! printf 'url = "%s"\n' "${target}" \
+    | curl -fsS -m 10 --retry 3 --retry-max-time 30 -o /dev/null -K - --data-binary "$2"; then
+    echo "WARNUNG: Ping fehlgeschlagen." >&2
+  fi
 }
