@@ -79,10 +79,9 @@ echo "Sperre erhalten"
 
 # --- 2. API-Container ------------------------------------------------------------
 echo "== API-Container"
-ids="$(timeout 30 docker ps -a -q --no-trunc \
-  --filter "label=com.docker.compose.project=${STAGING_COMPOSE_PROJECT}" \
-  --filter "label=com.docker.compose.service=${STAGING_API_SERVICE}" \
-  --filter "label=com.docker.compose.oneoff=False")" \
+ids="$(staging_container_ids \
+  "com.docker.compose.service=${STAGING_API_SERVICE}" \
+  "com.docker.compose.oneoff=False")" \
   || fail 7 "docker ps gescheitert."
 count="$(grep -c . <<<"${ids}" || true)"
 [ "${count}" = "1" ] || fail 3 "Erwartet genau einen API-Container im Projekt ${STAGING_COMPOSE_PROJECT}, gefunden ${count}."
