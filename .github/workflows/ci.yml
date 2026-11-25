@@ -164,6 +164,14 @@ jobs:
         # gescheiterten Neustart und das Nachholen am nächsten Tag sowie die
         # Pings an den Totmannschalter (E-5-101, E-5-114).
 
+      - name: Erneuerung nginx-Zertifikat prüfen (Ersatz)
+        run: bash scripts/test-renew-edge-certificate.sh
+        # scripts/renew-edge-certificate.sh läuft täglich auf dem Server
+        # (E-5-76). Der Test prüft Sperre, Digests aus current ohne Token und
+        # Pull, lego über den Webroot, Aufräumen der Einmal-Container,
+        # Neuladen von nginx per HUP, Health und Pings (E-5-114). Fälle mit
+        # Links dürfen hier nicht übersprungen werden (CI=true macht das rot).
+
       - name: Image bauen (ohne Push, ohne Cache)
         run: docker build --pull --tag identity-service-api:ci .
         # Beweist bei jedem Lauf die Kopplung global.json <-> Build-Stage-Digest:

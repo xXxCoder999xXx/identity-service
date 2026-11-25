@@ -36,10 +36,11 @@
 # die UMask wirkt darauf nicht. Die Container lesen ihre Dateien ueber
 # Bind-Mounts, die der Daemon als deploy einhaengt; die Rechte der Ordner
 # darueber spielen fuer sie keine Rolle, nur die der Dateien (0644, setzt
-# fetch-release.sh). Beim ersten echten compose up zu messen; scheitert nginx
-# am Lesen, 0711 und Nachtrag zu ADR-017. identity-service-api-restart.service
-# teilt das StateDirectory (Sperre): StateDirectoryMode immer in beiden Units
-# gleich aendern, sonst setzt jede Unit beim Start ihren Wert.
+# fetch-release.sh). Gemessen beim ersten Deploy (Sitzung 34): nginx liest
+# seine Konfiguration mit 0700. identity-service-api-restart.service und
+# identity-service-edge-cert.service teilen das StateDirectory (Sperre):
+# StateDirectoryMode immer in allen drei Units gleich aendern, sonst setzt
+# jede Unit beim Start ihren Wert.
 [Unit]
 Description=Staging: Freigabe pruefen und ausrollen (ADR-017)
 Wants=network-online.target

@@ -7,6 +7,7 @@
 # Einstiege:
 #   scripts/deploy-staging.sh   Pull-Deploy (PR 4d-3a)
 #   scripts/restart-api.sh      API-Neustart nach Zertifikatserneuerung (4d-3c)
+#   scripts/renew-edge-certificate.sh  Erneuerung nginx-Zertifikat (E-5-76)
 #
 # Warum eine Bibliothek: Alle Einstiege muessen denselben Daemon, denselben
 # Projektnamen, dieselbe Container-Suche und dieselbe Health-Pruefung
@@ -19,6 +20,7 @@
 #   staging_read_server_name   setzt STAGING_SERVER_NAME (E-5-82)
 #   staging_health             Health ueber nginx
 #   staging_container_ids      Container des Projekts per Label
+#   staging_remove_lego_oneoffs  Einmal-Container von lego entfernen
 #   staging_valid_ref          Referenz "NAME@sha256:<64 hex>"
 #   staging_read_current       setzt STAGING_CURRENT_COMMIT aus STATE_DIR/current
 #   staging_release_ref        Referenz aus deploy/staging.json (E-5-182)
@@ -100,6 +102,23 @@ staging_container_ids() {
     filters+=(--filter "label=${label}")
   done
   timeout 30 docker ps -a -q --no-trunc "${filters[@]}"
+}
+
+# staging_remove_lego_oneoffs
+# Entfernt Einmal-Container ("compose run") des Dienstes lego in diesem
+# Projekt, per Label, nie per Name: Ein fremder Container mit gleichem Namen
+# bleibt unberuehrt (Melden statt reparieren). Nur unter der Sperre des
+# Deploys aufrufen: Nur Deploy und Erneuerung starten lego, beide unter der
+# Sperre; jeder Treffer stammt also aus einem eigenen Lauf (etwa nach Abbruch
+# durch timeout oder Neustart). Rueckgabe immer 0; das Urteil faellt danach
+# mit staging_container_ids.
+staging_remove_lego_oneoffs() {
+  local ids id
+  ids="$(staging_container_ids "com.docker.compose.service=lego" "com.docker.compose.oneoff=True")" || return 0
+  while read -r id; do
+    [[ "${id}" =~ ^[0-9a-f]{64}$ ]] || continue
+    timeout 60 docker rm -f "${id}" >/dev/null 2>&1 || true
+  done <<<"${ids}"
 }
 
 # staging_valid_ref NAME REF

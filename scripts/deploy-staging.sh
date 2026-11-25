@@ -363,12 +363,7 @@ if [ "${decision}" = "first" ]; then
   # werden nur Einmal-Container von lego in diesem Projekt (Labels, nicht
   # Name): Vor lego war das Projekt leer, also stammen sie von diesem Lauf.
   # Ein Fehler hier ist kein Urteil; das Urteil faellt in der Pruefung danach.
-  if leftovers="$(staging_container_ids "com.docker.compose.service=lego" "com.docker.compose.oneoff=True")"; then
-    while read -r id; do
-      [[ "${id}" =~ ^[0-9a-f]{64}$ ]] || continue
-      timeout 60 docker rm -f "${id}" >/dev/null 2>&1 || true
-    done <<<"${leftovers}"
-  fi
+  staging_remove_lego_oneoffs
   require_empty_project "nach lego" 13
   [ "${lego_code}" = "0" ] \
     || fail 13 "Erst-Zertifikat nicht erhalten (lego Exit ${lego_code}); nichts gestartet."
