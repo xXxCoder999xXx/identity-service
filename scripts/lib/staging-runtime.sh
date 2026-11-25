@@ -68,3 +68,24 @@ staging_health() {
   echo "Health rot nach ${STAGING_HEALTH_ATTEMPTS} Versuchen" >&2
   return 1
 }
+
+# staging_container_ids [LABEL=WERT ...]
+# Gibt die vollen IDs aller Container (auch gestoppter, "ps -a") des
+# Staging-Projekts aus, eine je Zeile; weitere Labels schraenken ein. Das
+# Projekt-Label steht immer dabei: So kann kein Aufrufer versehentlich
+# Container eines anderen Projekts zaehlen. Rueckgabe ungleich 0, wenn
+# docker ps scheitert oder ein Argument nicht die Form LABEL=WERT hat; die
+# Ausgabe ist dann nicht zu verwenden. Ein nackter Schluessel waere fail
+# open: docker filtert dann nur auf das Vorhandensein des Labels (etwa
+# oneoff=True und oneoff=False zugleich). Die Form der IDs prueft der
+# Aufrufer, der sie weiterverwendet.
+staging_container_ids() {
+  local -a filters=(--filter "label=com.docker.compose.project=${STAGING_COMPOSE_PROJECT}")
+  local label
+  for label in "$@"; do
+    [[ "${label}" =~ ^[A-Za-z0-9._-]+=[^[:space:]]+$ ]] \
+      || { echo "Label-Filter nicht in der Form LABEL=WERT: '${label}'" >&2; return 1; }
+    filters+=(--filter "label=${label}")
+  done
+  timeout 30 docker ps -a -q --no-trunc "${filters[@]}"
+}
