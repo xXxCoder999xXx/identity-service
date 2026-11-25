@@ -634,6 +634,30 @@ deploy "alte Freigabe unlesbar: kein Rueckweg" 10 "kein Rueckweg moeglich"
 
 reset
 with_current
+sed -i "s|\"api\": \"${old_api}\",|&\n    \"api\": \"${old_api}\",|" "${sd}/releases/${commit_a}/deploy/staging.json"
+if [ "$(grep -c '"api":' "${sd}/releases/${commit_a}/deploy/staging.json")" = "2" ]; then
+  ok "Aufbau: alte Freigabe hat den Schluessel api zweimal"
+else
+  bad "Aufbau: doppelter Schluessel nicht erzeugt (sed)"
+fi
+export FAKE_BAD_API="${new_api}"
+deploy "alte Freigabe mit doppeltem Schluessel: kein Rueckweg" 10 "kein Rueckweg moeglich"
+
+reset
+with_current
+rm -f "${sd}/current"
+ln -s "${sd}/releases/${commit_a}" "${sd}/current"
+deploy "current absolut statt relativ" 2 "current fehlt oder ist ungueltig"
+hasnt "current absolut: keine Freigabe geholt" "fetch "
+
+reset
+with_current
+rm -rf "${sd}/releases/${commit_a}"
+deploy "current zeigt auf fehlenden Release-Ordner" 2 "current fehlt oder ist ungueltig"
+hasnt "Release-Ordner fehlt: keine Freigabe geholt" "fetch "
+
+reset
+with_current
 . "${work}/write-json" "${sd}/releases/${commit_a}/deploy/staging.json" \
   "ghcrXio/xxxcoder999xxx/identity-service@sha256:$(hex a 64)" "${old_nginx}" "${old_lego}"
 export FAKE_BAD_API="${new_api}"

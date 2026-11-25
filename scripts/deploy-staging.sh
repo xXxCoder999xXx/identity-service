@@ -94,8 +94,8 @@ done
 . "${script_dir}/lib/release-state.sh"
 # shellcheck source=lib/registry-only.sh
 . "${script_dir}/lib/registry-only.sh"
-# Projektname, Rootless-Pruefung, Container-Suche und Health (gemeinsam mit
-# restart-api.sh).
+# Projektname, Rootless-Pruefung, Container-Suche, Health, current, Referenzen
+# aus der Freigabe und Ping (gemeinsam mit restart-api.sh).
 # shellcheck source=lib/staging-runtime.sh
 . "${script_dir}/lib/staging-runtime.sh"
 
@@ -104,7 +104,7 @@ readonly NGINX_NAME="${REGISTRY_PREFIX}/identity-service-nginx"
 readonly LEGO_NAME="${REGISTRY_PREFIX}/identity-service-lego"
 
 # --- Ausgang: Aufraeumen und Ping ---------------------------------------------
-ping_url=""
+# Ping-URL und Ping aus lib/staging-runtime.sh (eine Quelle fuer alle Units).
 skip_ping="no"
 work=""
 docker_config=""
@@ -114,20 +114,9 @@ on_exit() {
   if [ -n "${docker_config}" ]; then rm -rf -- "${docker_config}"; fi
   if [ -n "${work}" ]; then rm -rf -- "${work}"; fi
   if [ "${skip_ping}" = "yes" ]; then exit "${rc}"; fi
-  if [ -z "${ping_url}" ]; then
-    echo "WARNUNG: Ping-URL nicht lesbar, kein Ping gesendet (Totmannschalter alarmiert)." >&2
-    exit "${rc}"
-  fi
-  local target="${ping_url}" body="deploy-staging exit ${rc}"
-  if [ "${rc}" -ne 0 ]; then
-    target="${ping_url}/fail"
-    [ -z "${fail_reason}" ] || body="${body}: ${fail_reason}"
-  fi
-  # Die URL steht nie in einer Kommandozeile (curl -K -, E-5-55).
-  if ! printf 'url = "%s"\n' "${target}" \
-    | curl -fsS -m 10 --retry 3 --retry-max-time 30 -o /dev/null -K - --data-binary "${body}"; then
-    echo "WARNUNG: Ping fehlgeschlagen." >&2
-  fi
+  local body="deploy-staging exit ${rc}"
+  if [ "${rc}" -ne 0 ] && [ -n "${fail_reason}" ]; then body="${body}: ${fail_reason}"; fi
+  staging_ping "${rc}" "${body}"
   exit "${rc}"
 }
 trap on_exit EXIT
@@ -135,16 +124,7 @@ trap on_exit EXIT
 # --- 0. Voraussetzungen --------------------------------------------------------
 echo "== Voraussetzungen"
 # Ping-URL zuerst: Ab hier meldet jeder Ausgang sein Ergebnis.
-if [ -n "${CREDENTIALS_DIRECTORY:-}" ] && [ -r "${CREDENTIALS_DIRECTORY}/ping-url" ]; then
-  candidate="$(cat -- "${CREDENTIALS_DIRECTORY}/ping-url")"
-  candidate="${candidate%$'\r'}"
-  if [[ "${candidate}" =~ ^https://[A-Za-z0-9.-]+/[A-Za-z0-9/_-]+$ ]]; then
-    ping_url="${candidate}"
-  else
-    echo "WARNUNG: Ping-URL hat eine unerwartete Form (nicht ausgegeben)." >&2
-  fi
-  unset candidate
-fi
+staging_read_ping_url
 
 [ "$#" -eq 3 ] || fail 2 "Erwartet: STATE_DIR SWITCH_FILE INSTALL_NGINX_DOCKERFILE (erhalten: $# Parameter)."
 state_dir="$1"
@@ -199,13 +179,9 @@ current_link="${state_dir}/current"
 # current von uns.
 current_commit=""
 read_current() {
-  local target
   current_commit=""
-  [ -L "${current_link}" ] || return 1
-  target="$(readlink -- "${current_link}")" || return 1
-  [[ "${target}" =~ ^releases/([0-9a-f]{40})$ ]] || return 1
-  [ -d "${releases_dir}/${BASH_REMATCH[1]}" ] || return 1
-  current_commit="${BASH_REMATCH[1]}"
+  staging_read_current "${state_dir}" || return 1
+  current_commit="${STAGING_CURRENT_COMMIT}"
 }
 
 # NGINX_DOCKERFILE nach E-5-177. Ein vorhandener Zustand ohne gueltiges
@@ -295,7 +271,7 @@ new_lego="${values[8]}"
 release_state_valid_run "${new_run}" || fail 3 "Run-ID ungueltig: '${new_run}'"
 release_state_valid_commit "${new_commit}" || fail 3 "Commit ungueltig: '${new_commit}'"
 release_state_valid_bundle "${new_bundle}" || fail 3 "Bundle-Digest ungueltig: '${new_bundle}'"
-valid_ref() { [[ "$2" =~ ^"$1"@sha256:[0-9a-f]{64}$ ]]; }
+valid_ref() { staging_valid_ref "$@"; }
 valid_ref "${API_NAME}" "${new_api}" || fail 3 "API-Referenz ungueltig: '${new_api}'"
 valid_ref "${NGINX_NAME}" "${new_nginx}" || fail 3 "nginx-Referenz ungueltig: '${new_nginx}'"
 valid_ref "${LEGO_NAME}" "${new_lego}" || fail 3 "lego-Referenz ungueltig: '${new_lego}'"
@@ -407,18 +383,7 @@ old_dir=""
 old_api=""
 old_nginx=""
 old_lego=""
-read_old_ref() {
-  local key="$1" name="$2" lines ref
-  lines="$(grep -E "^[[:space:]]*\"${key}\": \"${name}@sha256:[0-9a-f]{64}\",?$" -- "$3" || true)"
-  [ -n "${lines}" ] && [ "$(wc -l <<<"${lines}" | tr -d '[:space:]')" = "1" ] || return 1
-  [[ "${lines}" =~ \"([^\"]+)\",?$ ]] || return 1
-  # Sofort sichern: valid_ref ueberschreibt BASH_REMATCH.
-  ref="${BASH_REMATCH[1]}"
-  # Der Punkt in ghcr.io ist im Muster oben ein beliebiges Zeichen; erst
-  # valid_ref vergleicht den Namen woertlich.
-  valid_ref "${name}" "${ref}" || return 1
-  printf '%s' "${ref}"
-}
+read_old_ref() { staging_release_ref "$@"; }
 if [ -n "${current_commit}" ] && [ "${current_commit}" != "${new_commit}" ]; then
   old_json="${releases_dir}/${current_commit}/deploy/staging.json"
   if [ -f "${old_json}" ] && [ ! -L "${old_json}" ] \
