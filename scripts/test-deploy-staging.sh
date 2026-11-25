@@ -85,6 +85,7 @@ cp "${here}/lib/release-rules.sh" "${here}/lib/release-state.sh" "${here}/lib/re
 export FAKE_LOG="${work}/calls.log"
 export FAKE_RUNNING="${work}/running"
 export FAKE_LOGIN_STDIN="${work}/login.stdin"
+export FAKE_CONTAINERS="${work}/containers"
 
 # staging.json wie in deploy/: Parameter DATEI API NGINX LEGO
 cat >"${work}/write-json" <<'EOF'
@@ -147,7 +148,25 @@ case "$1" in
   image)
     if [ -n "${FAKE_INSPECT_OUT:-}" ]; then printf '%s\n' "${FAKE_INSPECT_OUT}"; else printf '%s\n' "${@: -1}"; fi
     exit 0 ;;
+  ps)
+    [ "${FAKE_PS_EXIT:-0}" = "0" ] || exit "${FAKE_PS_EXIT}"
+    n=$(( $(cat "${FAKE_CONTAINERS}.calls" 2>/dev/null || echo 0) + 1 ))
+    echo "${n}" >"${FAKE_CONTAINERS}.calls"
+    [ -z "${FAKE_PS_FAIL_FROM:-}" ] || [ "${n}" -lt "${FAKE_PS_FAIL_FROM}" ] || exit 1
+    cat "${FAKE_CONTAINERS}" 2>/dev/null || true
+    exit 0 ;;
+  rm)
+    [ "${FAKE_RM_KEEP:-}" = "yes" ] || rm -f "${FAKE_CONTAINERS}"
+    exit "${FAKE_RM_EXIT:-0}" ;;
   compose)
+    # Einmal-Lauf (lego): startet keinen Dienst, hinterlaesst auf Wunsch
+    # einen Container wie nach einem Abbruch.
+    for a in "$@"; do
+      if [ "${a}" = "run" ]; then
+        [ "${FAKE_LEGO_LEAVE:-}" != "yes" ] || printf '%s\n' "$(printf 'f%.0s' $(seq 1 64))" >>"${FAKE_CONTAINERS}"
+        exit "${FAKE_LEGO_EXIT:-0}"
+      fi
+    done
     for bad in ${FAKE_COMPOSE_FAIL_API:-}; do
       [ "${API_IMAGE}" != "${bad}" ] || exit 1
     done
@@ -199,7 +218,7 @@ chmod +x "${work}/bin/"* "${inst}/"*.sh
 # --- Ausgangszustand je Fall ----------------------------------------------------
 sd="${work}/state-dir"
 reset() {
-  rm -rf -- "${sd}" "${work}/cred" "${work}/run" "${work}/site" "${FAKE_LOG}" "${FAKE_RUNNING}" "${FAKE_LOGIN_STDIN}"
+  rm -rf -- "${sd}" "${work}/cred" "${work}/run" "${work}/site" "${FAKE_LOG}" "${FAKE_RUNNING}" "${FAKE_LOGIN_STDIN}" "${FAKE_CONTAINERS}" "${FAKE_CONTAINERS}.calls"
   mkdir -p "${sd}/releases" "${work}/cred" "${work}/run" "${work}/site/ca" "${work}/site/api-tls"
   printf '%s\n' "${token}" >"${work}/cred/ghcr-token"
   printf '%s\n' "${ping_url}" >"${work}/cred/ping-url"
@@ -216,7 +235,8 @@ reset() {
   export FAKE_API="${new_api}" FAKE_NGINX="${new_nginx}" FAKE_LEGO="${new_lego}"
   unset FAKE_FETCH_EXIT FAKE_FETCH_OUT FAKE_FETCH_DIR FAKE_NO_DIR FAKE_VIS_EXIT FAKE_ATTEST_FAIL_REF \
     FAKE_ATTEST_EXIT FAKE_LOGIN_EXIT FAKE_PULL_EXIT FAKE_INSPECT_OUT FAKE_COMPOSE_FAIL_API \
-    FAKE_BAD_API FAKE_PING_EXIT FAKE_FLOCK_EXIT FAKE_INFO_EXIT FAKE_SECURITY
+    FAKE_BAD_API FAKE_PING_EXIT FAKE_FLOCK_EXIT FAKE_INFO_EXIT FAKE_SECURITY \
+    FAKE_PS_EXIT FAKE_PS_FAIL_FROM FAKE_RM_KEEP FAKE_RM_EXIT FAKE_LEGO_LEAVE FAKE_LEGO_EXIT
 }
 
 # Laufender alter Stand: Release a ist ausgerollt und gesund.
@@ -295,6 +315,8 @@ has "deploy: Gegenprobe mit Dockerfile aus current (E-5-177)" "${sd}/releases/${
 count "deploy: vier Pakete auf Sichtbarkeit" "visibility " 4
 count "deploy: drei Images im Pruef-Gate" "attest " 3
 count "deploy: drei Pulls" "docker pull " 3
+hasnt "deploy: kein lego (nur bei first)" "--profile acme"
+hasnt "deploy: keine Leer-Pruefung (nur bei first)" "docker ps"
 ping_is "deploy: ok-Ping" "${ping_url}" "deploy-staging exit 0"
 if [ "$(cat "${FAKE_LOGIN_STDIN}")" = "${token}" ]; then ok "deploy: Token per stdin, ohne Zeilenende"; else bad "deploy: Token per stdin weicht ab"; fi
 if [ -z "$(find "${sd}" -maxdepth 1 -name '.current.*' -o -maxdepth 1 -name '.state.*')" ]; then
@@ -317,6 +339,74 @@ current_is "first: current angelegt" "releases/${commit_b}"
 state_run_is "first: Zustand angelegt" "${run_b}"
 has "first: Gegenprobe mit Dockerfile aus der Installation" "${work}/site/install.Dockerfile"
 ping_is "first: ok-Ping" "${ping_url}" "deploy-staging exit 0"
+has "first: lego als Einmal-Lauf im Profil acme" "compose -p identity-service-staging --project-directory ${sd}/releases/${commit_b} -f ${sd}/releases/${commit_b}/compose.yaml -f ${sd}/releases/${commit_b}/compose.staging.yaml --profile acme run --rm -T --pull never --publish 0.0.0.0:80:8080 lego"
+has "first: lego standalone auf 8080, Name edge, Domain vom Server" "lego run --path /data --accept-tos --http --http.address :8080 --cert.name edge --domains staging.example.test |"
+has "first: lego mit geprueftem Digest" "--profile acme run --rm -T --pull never --publish 0.0.0.0:80:8080 lego run --path /data --accept-tos --http --http.address :8080 --cert.name edge --domains staging.example.test | API_IMAGE=${new_api} NGINX_IMAGE=${new_nginx} LEGO_IMAGE=${new_lego}"
+hasnt "first: keine E-Mail an Let's Encrypt (E-5-66)" "--email"
+hasnt "first: kein Webroot im Standalone-Lauf" "--http.webroot"
+count "first: Projekt vor und nach lego geprueft" "docker ps -a -q --no-trunc --filter label=com.docker.compose.project=identity-service-staging |" 2
+has "first: Port 80 nur auf IPv4 (E-5-73)" "--publish 0.0.0.0:80:8080"
+hasnt "first: kein Container-Name (Aufraeumen nur ueber Labels)" "--name"
+has "first: nach lego Einmal-Container von lego gesucht" "--filter label=com.docker.compose.project=identity-service-staging --filter label=com.docker.compose.service=lego --filter label=com.docker.compose.oneoff=True |"
+hasnt "first: nichts zu entfernen, kein docker rm" "docker rm"
+order="$(grep -oE '^(docker pull|docker ps|docker compose .* run --rm|docker rm|docker compose .* up -d)' "${FAKE_LOG}" | sed -E 's/^docker compose .* run --rm$/lego/; s/^docker compose .* up -d$/up/' | uniq | tr '\n' ',')"
+if [ "${order}" = "docker pull,docker ps,lego,docker ps,up," ]; then
+  ok "first: Reihenfolge Pull, leer, lego, aufraeumen und leer, up"
+else
+  bad "first: Reihenfolge ${order}"
+fi
+
+echo "== Erst-Zertifikat (Exit 2, 13)"
+for code in 1 124 137; do
+  reset
+  export FAKE_DECISION="first" FAKE_LEGO_EXIT="${code}"
+  deploy "first, lego Exit ${code}" 13 "Erst-Zertifikat nicht erhalten (lego Exit ${code})"
+  hasnt "lego ${code}: kein compose up" "up -d"
+  current_is "lego ${code}: kein current" "-"
+  if [ ! -e "${sd}/state" ]; then ok "lego ${code}: kein Zustand"; else bad "lego ${code}: Zustand geschrieben"; fi
+  ping_is "lego ${code}: fail-Ping mit Code" "${ping_url}/fail" "deploy-staging exit 13"
+done
+
+reset
+export FAKE_DECISION="first"
+printf '%s\n' "$(hex 7 64)" >"${FAKE_CONTAINERS}"
+deploy "first, Projekt nicht leer" 2 "Erst-Modus verlangt ein leeres Projekt identity-service-staging (vor lego), gefunden 1"
+hasnt "nicht leer: kein lego, kein up" "docker compose"
+hasnt "nicht leer: nichts entfernt (Mensch entscheidet)" "docker rm"
+
+reset
+export FAKE_DECISION="first" FAKE_PS_EXIT=1
+deploy "first, docker ps scheitert" 2 "docker ps gescheitert (vor lego)"
+hasnt "ps rot: kein lego" "docker compose"
+
+reset
+export FAKE_DECISION="first" FAKE_LEGO_LEAVE="yes" FAKE_RM_KEEP="yes" FAKE_RM_EXIT=1
+deploy "first, Einmal-Container bleibt" 13 "(nach lego), gefunden 1"
+hasnt "Container bleibt: kein compose up" "up -d"
+
+reset
+export FAKE_DECISION="first" FAKE_PS_FAIL_FROM=2
+deploy "first, docker ps scheitert nach lego" 13 "docker ps gescheitert (nach lego)"
+hasnt "ps rot nach lego: kein compose up" "up -d"
+hasnt "ps rot nach lego: nichts entfernt" "docker rm"
+
+reset
+export FAKE_DECISION="first" FAKE_LEGO_LEAVE="yes" FAKE_LEGO_EXIT=124
+deploy "first, Abbruch hinterlaesst Container, rm raeumt auf" 13 "lego Exit 124"
+has "Abbruch: Entfernen per ID" "docker rm -f $(hex f 64)"
+if [ ! -s "${FAKE_CONTAINERS}" ]; then ok "Abbruch: Container entfernt"; else bad "Abbruch: Container uebrig"; fi
+
+echo "== Bibliothek: Label-Filter"
+for label in "com.docker.compose.oneoff" "" "a=b c"; do
+  got=0
+  (PATH="${work}/bin:${PATH}" FAKE_LOG=/dev/null; . "${inst}/lib/staging-runtime.sh"; staging_container_ids "${label}") >/dev/null 2>&1 || got=$?
+  if [ "${got}" -ne 0 ]; then ok "Label-Filter '${label}' abgelehnt"; else bad "Label-Filter '${label}' angenommen"; fi
+done
+: >"${FAKE_LOG}"
+got=0
+(PATH="${work}/bin:${PATH}"; . "${inst}/lib/staging-runtime.sh"; staging_container_ids "com.docker.compose.oneoff=False") >/dev/null 2>&1 || got=$?
+if [ "${got}" -eq 0 ]; then ok "Label-Filter gueltig angenommen"; else bad "Label-Filter gueltig abgelehnt (Exit ${got})"; fi
+has "Label-Filter gueltig: Projekt plus Zusatz" "docker ps -a -q --no-trunc --filter label=com.docker.compose.project=identity-service-staging --filter label=com.docker.compose.oneoff=False |"
 
 reset
 printf '%s\r\n' "${token}" >"${work}/cred/ghcr-token"
@@ -329,6 +419,7 @@ with_current
 export FAKE_DECISION="noop" FAKE_RUN="${run_a}" FAKE_COMMIT="${commit_a}" FAKE_BUNDLE="${bundle_a}"
 deploy "noop, Stand gesund" 0 "Nichts zu tun"
 hasnt "noop: kein compose" "docker compose"
+hasnt "noop: kein lego" "--profile acme"
 hasnt "noop: kein Pruef-Gate" "attest "
 ping_is "noop: ok-Ping" "${ping_url}" "deploy-staging exit 0"
 
