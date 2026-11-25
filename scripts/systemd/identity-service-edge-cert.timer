@@ -1,0 +1,19 @@
+# Taeglicher Lauf von identity-service-edge-cert.service (E-5-76).
+# Ablageort: /etc/systemd/system, root:root, 0644.
+#
+# Taeglich, weil lego per ARI selbst entscheidet, wann erneuert wird; ein
+# Lauf ohne Faelligkeit fragt nur ARI und laedt nginx neu.
+# RandomizedDelaySec: Start zufaellig innerhalb einer Stunde, verteilt die
+# Last bei Let's Encrypt. Persistent: Ein verpasster Lauf (Server aus) wird
+# nach dem Start nachgeholt.
+# Healthchecks.io: Periode 1 Tag, Grace 3 Stunden (Versatz plus Puffer).
+[Unit]
+Description=Taeglich: Zertifikat von nginx fuer Staging pruefen (E-5-76)
+
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=1h
+Persistent=true
+
+[Install]
+WantedBy=timers.target

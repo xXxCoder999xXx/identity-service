@@ -14,8 +14,9 @@
 # kein Netz ausser Loopback (Health ueber nginx an 127.0.0.1).
 #
 # StateDirectory teilt sie mit dem Deploy, nur wegen der gemeinsamen Sperre.
-# StateDirectoryMode muss gleich sein: systemd setzt den Modus bei jedem
-# Start; ein abweichender Wert wuerde den Ordner des Deploys umstellen.
+# StateDirectoryMode muss gleich sein (auch in identity-service-edge-cert):
+# systemd setzt den Modus bei jedem Start; ein abweichender Wert wuerde den
+# Ordner des Deploys umstellen.
 [Unit]
 Description=Staging: API neu starten (E-5-120)
 After=user@1001.service
@@ -36,7 +37,7 @@ RuntimeDirectoryMode=0700
 UMask=0077
 # Wartet hoechstens 50 Minuten auf die Sperre (laufender Deploy, bis zu
 # 45 Minuten), dann Neustart (bis 2 Minuten) und Health (rund 2 Minuten).
-# Unter TimeoutStartSec der Zertifikats-Unit (60 Minuten).
+# Unter TimeoutStartSec von identity-service-api-cert.service (60 Minuten).
 TimeoutStartSec=58min
 NoNewPrivileges=yes
 CapabilityBoundingSet=
